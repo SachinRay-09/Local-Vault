@@ -177,8 +177,9 @@ class AdvancedSearchService {
           comparison = a.createdAt.compareTo(b.createdAt);
           break;
         case SortBy.size:
+          comparison = 0; // Folders don't have size
+          break;
         case SortBy.relevance:
-        default:
           comparison = a.name.toLowerCase().compareTo(b.name.toLowerCase());
           break;
       }
@@ -200,7 +201,6 @@ class AdvancedSearchService {
           comparison = a.byteSize.compareTo(b.byteSize);
           break;
         case SortBy.relevance:
-        default:
           comparison = a.originalName.toLowerCase().compareTo(b.originalName.toLowerCase());
           break;
       }

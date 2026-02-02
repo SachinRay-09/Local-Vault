@@ -5,12 +5,10 @@ import 'dart:io';
 
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
-import '../../services/advanced_search_service.dart';
 import '../../services/bulk_import_service.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/import_export_service.dart';
-import '../../services/metadata_service.dart';
 import '../../services/secure_storage_service.dart';
 import '../../services/undo_service.dart';
 import '../../services/vault_open_service.dart';
@@ -560,6 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
             leading: const Icon(Icons.auto_stories, size: 20),
             title: const Text('Open in Yomikiru'),
             onTap: () {
+              if (!context.mounted) return;
               Navigator.of(context).pop();
               _openFolderInYomikiru(folder);
             },
