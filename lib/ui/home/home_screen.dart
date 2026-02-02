@@ -20,7 +20,6 @@ import '../pickers/folder_picker_screen.dart';
 import '../settings/settings_screen.dart';
 import '../search/global_search_screen.dart';
 import '../viewers/video_viewer_screen.dart';
-import '../widgets/context_menu_region.dart';
 import '../widgets/optimized_image_viewer.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -518,81 +517,320 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openFolderInYomikiru(VaultFolder folder) async {
+    final messenger = ScaffoldMessenger.of(context);
+    
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text('Preparing "${folder.name}" for Yomikiru...')),
       );
 
-      final tempPath = await _yomikiru.openFolderInYomikiru(folder);
+      final result = await _yomikiru.openFolderInYomikiru(folder);
       
       if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Opened "${folder.name}" in Yomikiru'),
-          action: SnackBarAction(
-            label: 'Show Folder',
-            onPressed: () async {
-              await Process.start('explorer', [tempPath], mode: ProcessStartMode.detached);
-            },
-          ),
-        ),
-      );
+      messenger.hideCurrentSnackBar();
+      
+      if (result.success) {
+        // Yomikiru launched successfully
+        _showYomikiruSuccessDialog(folder.name, result.tempFolderPath);
+      } else {
+        // Yomikiru not found, show path for manual setup
+        _showYomikiruNotFoundDialog(result.tempFolderPath, result.error);
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
         SnackBar(content: Text('Failed to open in Yomikiru: $e')),
       );
     }
   }
 
-  Widget _buildFolderContextMenu(VaultFolder folder) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 200),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            dense: true,
-            leading: const Icon(Icons.auto_stories, size: 20),
-            title: const Text('Open in Yomikiru'),
-            onTap: () {
-              if (!context.mounted) return;
-              Navigator.of(context).pop();
-              _openFolderInYomikiru(folder);
+  void _showYomikiruSuccessDialog(String folderName, String tempPath) {
+    final messenger = ScaffoldMessenger.of(context);
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent dismissing without action
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Yomikiru Launched'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Successfully launched Yomikiru with folder "$folderName"!'),
+            const SizedBox(height: 16),
+            const Text('Images exported to:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      tempPath,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: tempPath));
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Path copied to clipboard!')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 20),
+                    tooltip: 'Copy path',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).colorScheme.primary),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('💡 Tip:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 4),
+                  Text('If images don\'t appear in Yomikiru, copy the path above and set it as the manga folder in Yomikiru\'s settings.'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '🔒 Security: Click "Clean Up" when you\'re done reading to remove temp files.',
+              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Process.start('explorer', [tempPath], mode: ProcessStartMode.detached);
             },
+            child: const Text('Open Folder'),
           ),
-          ListTile(
-            dense: true,
-            leading: const Icon(Icons.drive_file_move_outline, size: 20),
-            title: const Text('Move'),
-            onTap: () {
-              Navigator.of(context).pop();
-              _moveFolder(folder);
-            },
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Keep Reading'),
           ),
-          ListTile(
-            dense: true,
-            leading: const Icon(Icons.drive_file_rename_outline, size: 20),
-            title: const Text('Rename'),
-            onTap: () {
-              Navigator.of(context).pop();
-              _renameFolder(folder);
+          FilledButton(
+            onPressed: () async {
+              // Clean up temp folder
+              await _yomikiru.cleanupTempFolder(tempPath);
+              if (mounted) {
+                Navigator.pop(context);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Temp folder cleaned up successfully!')),
+                );
+              }
             },
-          ),
-          ListTile(
-            dense: true,
-            leading: const Icon(Icons.delete_outline, size: 20),
-            title: const Text('Delete'),
-            onTap: () {
-              Navigator.of(context).pop();
-              _deleteFolder(folder);
-            },
+            child: const Text('Clean Up'),
           ),
         ],
       ),
     );
+  }
+
+  void _showYomikiruNotFoundDialog(String tempPath, String? error) {
+    final messenger = ScaffoldMessenger.of(context);
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent dismissing without action
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Yomikiru Not Found'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Yomikiru was not found, but your images have been exported to:'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      tempPath,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: tempPath));
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Path copied to clipboard!')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 20),
+                    tooltip: 'Copy path',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).colorScheme.primary),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('📋 Next Steps:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('1. Install Yomikiru at D:\\Yomikiru.exe and try again'),
+                  Text('2. Copy the path above and set it in Yomikiru settings'),
+                  Text('3. Open the folder manually in your preferred manga reader'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '🔒 Security: Click "Clean Up" when you\'re done reading to remove temp files.',
+              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: tempPath));
+              messenger.showSnackBar(
+                const SnackBar(content: Text('Path copied to clipboard!')),
+              );
+            },
+            child: const Text('Copy Path'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Process.start('explorer', [tempPath], mode: ProcessStartMode.detached);
+            },
+            child: const Text('Open Folder'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Keep Reading'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              // Clean up temp folder
+              await _yomikiru.cleanupTempFolder(tempPath);
+              if (mounted) {
+                Navigator.pop(context);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Temp folder cleaned up successfully!')),
+                );
+              }
+            },
+            child: const Text('Clean Up'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFolderContextMenu(BuildContext context, Offset position, VaultFolder folder) {
+    // Use showMenu with proper positioning
+    final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    
+    showMenu(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(position.dx, position.dy, 1, 1),
+        Rect.fromLTWH(0, 0, overlay.size.width, overlay.size.height),
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'yomikiru',
+          child: const Row(
+            children: [
+              Icon(Icons.auto_stories, size: 20),
+              SizedBox(width: 12),
+              Text('Open in Yomikiru'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'move',
+          child: const Row(
+            children: [
+              Icon(Icons.drive_file_move_outline, size: 20),
+              SizedBox(width: 12),
+              Text('Move'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'rename',
+          child: const Row(
+            children: [
+              Icon(Icons.drive_file_rename_outline, size: 20),
+              SizedBox(width: 12),
+              Text('Rename'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: const Row(
+            children: [
+              Icon(Icons.delete_outline, size: 20),
+              SizedBox(width: 12),
+              Text('Delete'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value != null && mounted) {
+        switch (value) {
+          case 'yomikiru':
+            _openFolderInYomikiru(folder);
+            break;
+          case 'move':
+            _moveFolder(folder);
+            break;
+          case 'rename':
+            _renameFolder(folder);
+            break;
+          case 'delete':
+            _deleteFolder(folder);
+            break;
+        }
+      }
+    });
   }
 
   Future<void> _renameFolder(VaultFolder folder) async {
@@ -804,12 +1042,13 @@ class _HomeScreenState extends State<HomeScreen> {
               IconButton(
                 tooltip: 'Undo: ${_undoService.nextUndoDescription}',
                 onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
                   try {
                     await _undoService.undo();
                     await _refresh();
                   } catch (e) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         SnackBar(content: Text('Undo failed: $e')),
                       );
                     }
@@ -898,8 +1137,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ..._visibleFolders.map(
-                      (folder) => ContextMenuRegion(
-                        contextMenuBuilder: (context, offset) => _buildFolderContextMenu(folder),
+                      (folder) => GestureDetector(
+                        onSecondaryTapDown: (details) {
+                          _showFolderContextMenu(context, details.globalPosition, folder);
+                        },
                         child: ListTile(
                           leading: _multiSelectMode 
                               ? Checkbox(

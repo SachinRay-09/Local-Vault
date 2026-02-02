@@ -9,7 +9,7 @@ Last updated: 2026-02-02
 - Export/import uses `archive` password-protected `ZipFileEncoder` (don't manually encrypt zip bytes unless necessary)
 
 ## Status summary
-- **Current milestone**: Feature complete with batch operations and performance optimizations
+- **Current milestone**: Feature complete with all analysis issues resolved
 - **Overall progress (rough)**: **100%**
 
 ## Can I use it already?
@@ -89,6 +89,13 @@ Last updated: 2026-02-02
   - **Optimized image viewer**: Smooth navigation with preloading
   - **Yomikiru integration**: Open manga folders in external reader
   - **Performance optimizations**: RepaintBoundary, memory management
+- **Code quality v1** (NEW):
+  - **Flutter analysis**: All analysis issues resolved
+  - **BuildContext safety**: Fixed async context usage patterns
+  - **Windows testing**: App builds and runs successfully on Windows
+  - **Context menu fix**: Fixed right-click context menus for folders
+  - **Yomikiru integration**: Debugged and verified working integration
+  - **Performance optimizations**: Added RepaintBoundary widgets and optimized list rendering
 
 ## What's left (realistic)
 - **All core features completed!** 🎉

@@ -9,7 +9,7 @@ class ContextMenuRegion extends StatelessWidget {
   });
 
   final Widget child;
-  final Widget Function(BuildContext context, Offset offset) contextMenuBuilder;
+  final Widget Function(BuildContext context, Offset offset, VoidCallback onClose) contextMenuBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -30,28 +30,34 @@ class ContextMenuRegion extends StatelessWidget {
     final overlay = Overlay.of(context);
     late OverlayEntry overlayEntry;
 
+    void closeMenu() {
+      overlayEntry.remove();
+    }
+
     overlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          // Invisible barrier to close menu
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => overlayEntry.remove(),
-              child: Container(color: Colors.transparent),
+      builder: (context) {
+        return Stack(
+          children: [
+            // Invisible barrier to close menu
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: closeMenu,
+                child: Container(color: Colors.transparent),
+              ),
             ),
-          ),
-          // Context menu
-          Positioned(
-            left: position.dx,
-            top: position.dy,
-            child: Material(
-              elevation: 8,
-              borderRadius: BorderRadius.circular(8),
-              child: contextMenuBuilder(context, position),
+            // Context menu
+            Positioned(
+              left: position.dx,
+              top: position.dy,
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(8),
+                child: contextMenuBuilder(context, position, closeMenu),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
 
     overlay.insert(overlayEntry);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,28 @@ import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
 import 'vault_open_service.dart';
 import 'vault_repository.dart';
+
+class YomikiruNotFoundException implements Exception {
+  final String tempFolderPath;
+  YomikiruNotFoundException(this.tempFolderPath);
+  
+  @override
+  String toString() => 'Yomikiru not found. Images exported to: $tempFolderPath';
+}
+
+class YomikiruLaunchResult {
+  final bool success;
+  final String tempFolderPath;
+  final Process? process;
+  final String? error;
+  
+  YomikiruLaunchResult({
+    required this.success,
+    required this.tempFolderPath,
+    this.process,
+    this.error,
+  });
+}
 
 class YomikiruIntegrationService {
   YomikiruIntegrationService({
@@ -18,13 +41,17 @@ class YomikiruIntegrationService {
   final VaultOpenService openService;
 
   /// Export a folder to a temporary location and open with Yomikiru
-  Future<String> openFolderInYomikiru(VaultFolder folder) async {
+  Future<YomikiruLaunchResult> openFolderInYomikiru(VaultFolder folder) async {
     try {
+      debugPrint('Starting Yomikiru export for folder: ${folder.name}');
+      
       // Create temporary export directory
       final tempDir = await _createTempExportDir(folder.name);
+      debugPrint('Created temp directory: ${tempDir.path}');
       
       // Get all files in the folder (including subfolders)
       final allFiles = await _getAllFilesInFolder(folder.id);
+      debugPrint('Found ${allFiles.length} image files');
       
       if (allFiles.isEmpty) {
         throw Exception('No images found in folder "${folder.name}"');
@@ -34,13 +61,49 @@ class YomikiruIntegrationService {
       await _exportFilesToTemp(allFiles, tempDir, folder.id);
       
       // Try to launch Yomikiru with the folder
-      await _launchYomikiru(tempDir.path);
+      final launchResult = await _launchYomikiru(tempDir.path);
       
-      return tempDir.path;
+      // Always return success with temp path - user will confirm cleanup manually
+      return YomikiruLaunchResult(
+        success: launchResult['success'] == true,
+        tempFolderPath: tempDir.path,
+        process: null, // Don't track process since it's detached
+        error: launchResult['success'] == true ? null : launchResult['error'] as String?,
+      );
     } catch (e) {
       debugPrint('Failed to open folder in Yomikiru: $e');
       rethrow;
     }
+  }
+
+  /// Schedule cleanup after a delay (fallback)
+  void _scheduleCleanup(String tempFolderPath, Duration delay) {
+    debugPrint('Scheduling fallback cleanup for $tempFolderPath in ${delay.inMinutes} minutes');
+    
+    Timer(delay, () {
+      _cleanupTempFolder(tempFolderPath);
+    });
+  }
+
+  /// Clean up temporary folder
+  Future<void> _cleanupTempFolder(String tempFolderPath) async {
+    try {
+      final tempDir = Directory(tempFolderPath);
+      if (await tempDir.exists()) {
+        debugPrint('Cleaning up temp folder: $tempFolderPath');
+        await tempDir.delete(recursive: true);
+        debugPrint('Temp folder cleaned up successfully');
+      } else {
+        debugPrint('Temp folder already cleaned up: $tempFolderPath');
+      }
+    } catch (e) {
+      debugPrint('Failed to cleanup temp folder $tempFolderPath: $e');
+    }
+  }
+
+  /// Clean up specific temp folder (for manual cleanup)
+  Future<void> cleanupTempFolder(String tempFolderPath) async {
+    await _cleanupTempFolder(tempFolderPath);
   }
 
   /// Get all image files in a folder recursively
@@ -88,6 +151,8 @@ class YomikiruIntegrationService {
     Directory tempDir, 
     int rootFolderId
   ) async {
+    debugPrint('Exporting ${files.length} files to ${tempDir.path}');
+    
     for (final file in files) {
       try {
         // Decrypt file
@@ -97,7 +162,9 @@ class YomikiruIntegrationService {
         String relativePath = file.originalName;
         if (file.parentFolderId != null && file.parentFolderId != rootFolderId) {
           final folderPath = await _getFolderPath(file.parentFolderId!, rootFolderId);
-          relativePath = path.join(folderPath, file.originalName);
+          if (folderPath.isNotEmpty) {
+            relativePath = path.join(folderPath, file.originalName);
+          }
         }
         
         // Create destination file
@@ -107,10 +174,15 @@ class YomikiruIntegrationService {
         // Copy decrypted file
         await decryptedFile.copy(destFile.path);
         
+        debugPrint('Exported: $relativePath');
+        
       } catch (e) {
         debugPrint('Failed to export file ${file.originalName}: $e');
+        // Continue with other files even if one fails
       }
     }
+    
+    debugPrint('Export completed to: ${tempDir.path}');
   }
 
   /// Get folder path relative to root folder
@@ -119,20 +191,30 @@ class YomikiruIntegrationService {
     int? currentId = folderId;
     
     while (currentId != null && currentId != rootFolderId) {
-      final folders = await repo.listFolders(parentId: null);
-      final folder = folders.where((f) => f.id == currentId).firstOrNull;
+      // Get all folders to find the one with the current ID
+      final allFolders = await repo.listFolders(parentId: null);
+      final folder = allFolders.where((f) => f.id == currentId).firstOrNull;
       
-      if (folder == null) break;
+      if (folder == null) {
+        // Try to find in subfolders by getting the folder directly
+        try {
+          final folders = await repo.listFolders(parentId: currentId);
+          if (folders.isEmpty) break;
+        } catch (e) {
+          break;
+        }
+        break;
+      }
       
-      pathParts.insert(0, folder.name);
+      pathParts.insert(0, _sanitizeFolderName(folder.name));
       currentId = folder.parentId;
     }
     
     return pathParts.join(Platform.pathSeparator);
   }
 
-  /// Launch Yomikiru with the specified folder
-  Future<void> _launchYomikiru(String folderPath) async {
+  /// Launch Yomikiru with the specified folder and return process info
+  Future<Map<String, dynamic>> _launchYomikiru(String folderPath) async {
     if (Platform.isWindows) {
       // Try user-specified path first, then common locations
       final possiblePaths = [
@@ -147,22 +229,42 @@ class YomikiruIntegrationService {
       for (final possiblePath in possiblePaths) {
         if (await File(possiblePath).exists()) {
           yomikiruPath = possiblePath;
+          debugPrint('Found Yomikiru at: $yomikiruPath');
           break;
         }
       }
       
       if (yomikiruPath != null) {
-        // Launch Yomikiru with folder path
-        debugPrint('Launching Yomikiru: $yomikiruPath with folder: $folderPath');
-        await Process.start(yomikiruPath, [folderPath], mode: ProcessStartMode.detached);
+        try {
+          // Launch Yomikiru with folder path as argument
+          debugPrint('Launching Yomikiru: $yomikiruPath with folder: $folderPath');
+          
+          // Use shell command to launch Yomikiru without tracking the process
+          await Process.run(
+            'cmd',
+            ['/c', 'start', '""', yomikiruPath, folderPath],
+            runInShell: true,
+          );
+          
+          // Give the process a moment to start
+          await Future.delayed(const Duration(milliseconds: 1000));
+          
+          return {
+            'success': true,
+            'path': yomikiruPath,
+          };
+        } catch (e) {
+          debugPrint('Failed to launch Yomikiru: $e');
+          return {'success': false, 'error': e.toString()};
+        }
       } else {
-        // Fallback: open folder in file explorer
-        await Process.start('explorer', [folderPath], mode: ProcessStartMode.detached);
-        throw Exception('Yomikiru not found at expected locations. Please install Yomikiru v2.23.1 or update the path in the code.');
+        debugPrint('Yomikiru not found at any expected location');
+        return {'success': false, 'error': 'Yomikiru not found at expected locations'};
       }
     } else {
-      // For other platforms, just open the folder
-      throw Exception('Yomikiru integration is currently only supported on Windows');
+      // For other platforms, just return false
+      debugPrint('Yomikiru integration is currently only supported on Windows');
+      return {'success': false, 'error': 'Platform not supported'};
     }
   }
 
@@ -183,10 +285,31 @@ class YomikiruIntegrationService {
     try {
       final tempBaseDir = Directory(path.join(Directory.systemTemp.path, 'local_vault_yomikiru'));
       if (await tempBaseDir.exists()) {
+        debugPrint('Cleaning up all temp exports in: ${tempBaseDir.path}');
         await tempBaseDir.delete(recursive: true);
+        debugPrint('All temp exports cleaned up successfully');
       }
     } catch (e) {
       debugPrint('Failed to cleanup temp exports: $e');
     }
+  }
+
+  /// Get list of current temp export folders
+  static Future<List<String>> getCurrentTempFolders() async {
+    try {
+      final tempBaseDir = Directory(path.join(Directory.systemTemp.path, 'local_vault_yomikiru'));
+      if (await tempBaseDir.exists()) {
+        final folders = <String>[];
+        await for (final entity in tempBaseDir.list()) {
+          if (entity is Directory) {
+            folders.add(entity.path);
+          }
+        }
+        return folders;
+      }
+    } catch (e) {
+      debugPrint('Failed to list temp folders: $e');
+    }
+    return [];
   }
 }
