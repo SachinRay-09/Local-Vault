@@ -1,0 +1,56 @@
+import 'package:isar/isar.dart';
+
+import '../db/isar_db.dart';
+import '../models/app_settings.dart';
+import '../models/vault_file.dart';
+import '../models/vault_folder.dart';
+
+class VaultStats {
+  VaultStats({
+    required this.folderCount,
+    required this.fileCount,
+    required this.totalBytes,
+  });
+
+  final int folderCount;
+  final int fileCount;
+  final int totalBytes;
+}
+
+class SettingsService {
+  Isar get _isar => IsarDb.instance;
+
+  Future<AppSettings> getOrCreate() async {
+    final existing = await _isar.appSettings.where().anyId().findFirst();
+    if (existing != null) return existing;
+
+    final created = AppSettings();
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(created);
+    });
+    return created;
+  }
+
+  Future<void> setMaxStorageBytes(int? bytes) async {
+    final s = await getOrCreate();
+    s.maxStorageBytes = bytes;
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(s);
+    });
+  }
+
+  Future<VaultStats> stats() async {
+    final folders = await _isar.vaultFolders.where().anyId().findAll();
+    final files = await _isar.vaultFiles.where().anyId().findAll();
+    var total = 0;
+    for (final f in files) {
+      total += f.byteSize;
+    }
+    return VaultStats(
+      folderCount: folders.length,
+      fileCount: files.length,
+      totalBytes: total,
+    );
+  }
+}
+
