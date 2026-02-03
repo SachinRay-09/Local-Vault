@@ -92,11 +92,34 @@ class _HomeScreenState extends State<HomeScreen> {
     _refresh();
   }
 
+  @override
+  void dispose() {
+    // EMERGENCY: Aggressive memory cleanup
+    _clearAllCaches();
+    _selectedFileIds.clear();
+    _selectedFolderIds.clear();
+    _files.clear();
+    _folders.clear();
+    _folderStack.clear();
+    super.dispose();
+  }
+
+  /// Emergency memory cleanup - clear only image cache, NOT data
+  void _clearAllCaches() {
+    // Clear image cache immediately to prevent memory buildup
+    PaintingBinding.instance.imageCache.clear();
+    
+    // DO NOT clear _files and _folders here - it breaks the app functionality!
+    // Only clear image cache for memory management
+  }
+
   Future<void> _refresh() async {
+    debugPrint('DEBUG: Starting refresh for folder $_currentFolderId');
     setState(() {
       _loading = true;
       _currentPage = 0;
       _files.clear();
+      _folders.clear();
       _hasMoreFiles = true;
       // Clear selections when refreshing
       _multiSelectMode = false;
@@ -104,22 +127,39 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedFolderIds.clear();
     });
     
-    final folders = await _repo.listFolders(parentId: _currentFolderId);
-    final totalCount = await _repo.countFiles(parentId: _currentFolderId);
-    final files = await _repo.listFiles(
-      parentId: _currentFolderId,
-      limit: _pageSize,
-      offset: 0,
-    );
-    
-    if (!mounted) return;
-    setState(() {
-      _folders = folders;
-      _files = files;
-      _totalFileCount = totalCount;
-      _hasMoreFiles = files.length >= _pageSize && files.length < totalCount;
-      _loading = false;
-    });
+    try {
+      final folders = await _repo.listFolders(parentId: _currentFolderId);
+      debugPrint('DEBUG: Found ${folders.length} folders');
+      final totalCount = await _repo.countFiles(parentId: _currentFolderId);
+      debugPrint('DEBUG: Total file count: $totalCount');
+      final files = await _repo.listFiles(
+        parentId: _currentFolderId,
+        limit: _pageSize,
+        offset: 0,
+      );
+      debugPrint('DEBUG: Found ${files.length} files');
+      
+      if (!mounted) return;
+      setState(() {
+        _folders = folders;
+        _files = files;
+        _totalFileCount = totalCount;
+        _hasMoreFiles = files.length >= _pageSize && files.length < totalCount;
+        _loading = false;
+      });
+      debugPrint('DEBUG: Refresh completed successfully');
+      
+      // Only clear image cache after successful data load, not before
+      PaintingBinding.instance.imageCache.clear();
+    } catch (e) {
+      debugPrint('DEBUG: Error during refresh: $e');
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load data: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadMoreFiles() async {
@@ -141,6 +181,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _hasMoreFiles = moreFiles.length >= _pageSize && _files.length < _totalFileCount;
       _loadingMore = false;
     });
+    
+    // Only clear image cache, not data
+    PaintingBinding.instance.imageCache.clear();
   }
 
   Widget _breadcrumbs() {
@@ -275,8 +318,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final trimmed = (name ?? '').trim();
     if (trimmed.isEmpty) return;
 
-    await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
-    await _refresh();
+    try {
+      debugPrint('DEBUG: Creating folder "$trimmed" in parent $_currentFolderId');
+      final folder = await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
+      debugPrint('DEBUG: Folder created with ID ${folder.id}');
+      await _refresh();
+      debugPrint('DEBUG: Refresh completed, folders count: ${_folders.length}');
+    } catch (e) {
+      debugPrint('DEBUG: Error creating folder: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create folder: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _addMedia() async {
@@ -405,6 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<bool> _popFolder() async {
     if (_folderStack.isEmpty) return true;
+    
     setState(() {
       _folderStack.removeLast();
       _currentFolderId = _folderStack.isEmpty ? null : _folderStack.last.id;
@@ -502,6 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
           sourceFolderPath: folderPath,
           destinationFolderId: _currentFolderId,
           onComplete: () {
+            debugPrint('DEBUG: Bulk import completed, closing dialog and refreshing');
             Navigator.pop(context);
             _refresh();
           },
@@ -632,10 +689,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           FilledButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
               // Clean up temp folder
               await _yomikiru.cleanupTempFolder(tempPath);
               if (mounted) {
-                Navigator.pop(context);
+                navigator.pop();
                 messenger.showSnackBar(
                   const SnackBar(content: Text('Temp folder cleaned up successfully!')),
                 );
@@ -744,10 +802,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           FilledButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
               // Clean up temp folder
               await _yomikiru.cleanupTempFolder(tempPath);
               if (mounted) {
-                Navigator.pop(context);
+                navigator.pop();
                 messenger.showSnackBar(
                   const SnackBar(content: Text('Temp folder cleaned up successfully!')),
                 );

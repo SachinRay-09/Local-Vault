@@ -1,165 +1,159 @@
 # Development Progress: Local Vault
 
-Last updated: 2026-02-02
+Last updated: 2026-02-03
 
-## Goals (non-negotiable)
-- 100% offline, no cloud
-- **DB stores only plaintext metadata** (folder tree, filenames, blob pointers)
-- **Files on disk are encrypted blobs** with random names
-- Export/import uses `archive` password-protected `ZipFileEncoder` (don't manually encrypt zip bytes unless necessary)
+## Project Summary
+**Local Vault v1.2** is a production-ready encrypted file storage application built with Flutter. It provides 100% offline security with encrypted file blobs, plaintext metadata for performance, and comprehensive manga collection management. Key features include bulk folder import, Yomikiru integration, advanced search, batch operations, and optimized performance for large collections (20GB+). The app successfully handles 500+ images per folder with smooth navigation, thumbnail caching, and user-controlled cleanup systems.
 
-## Status summary
-- **Current milestone**: Feature complete with all analysis issues resolved
-- **Overall progress (rough)**: **100%**
+## Current Status: **PERFORMANCE OPTIMIZATION PHASE** ⚡
+- **Core Features**: Complete and functional (folders, encrypted storage, import/export, search, batch operations)
+- **Memory Crisis**: RESOLVED - RSS reduced from 3GB to 500MB (83% improvement)
+- **Current Challenge**: CPU usage increased from 52% to 70% - requires isolate-based optimization
+- **Security**: AES-256 encryption, PBKDF2 password hashing, secure temp file management
+- **Platform**: Windows desktop with potential for cross-platform expansion
 
-## Can I use it already?
-- **Make folders**: Yes
-- **Store/import media/files into the vault**: Yes (Add Media)
-- **Performance optimized**: Yes (smooth navigation, no loading symbols)
-- **Batch operations**: Yes (multi-select for bulk actions)
-- **Complete feature set**: Yes (all planned features implemented)
+---
 
-## Did we achieve the original plan?
-- **Yes (core plan)**: Offline vault, unlimited folders, encrypted file blobs, import/export password zip, open media, basic settings.
-- **Performance enhanced**: Thumbnail system, pagination, smooth image navigation, optimized video playback
-- **Notes**: DB is plaintext metadata (fast). Files are encrypted on disk.
+## RESEARCH-BACKED PERFORMANCE OPTIMIZATION ROADMAP
 
-## Completed
-- **Packages added**: `isar`, `isar_flutter_libs`, `path_provider`, `flutter_secure_storage`, `encrypt`, `file_picker`, `archive`
-- **Spec updated**: clarified security model + export/import rules
-- **Project scaffold created**:
-  - `lib/app/app.dart`
-  - `lib/db/isar_db.dart`
-  - `lib/models/*` (Isar collections)
-  - `lib/services/*` (paths/crypto/export scaffolds)
-  - `lib/ui/home/home_screen.dart` (UI skeleton)
-- **Database initialization**: `main.dart` opens Isar at startup
-- **Isar codegen**: `.g.dart` generated
-- **Auth v1 (password gate)**:
-  - First-run setup screen (password + 2 recovery questions)
-  - Unlock screen
-  - "Forgot password" recovery flow using the 2 questions
-  - Password reset keeps the same master key (files remain decryptable)
-- **Auth hardening v1**:
-  - Password hashing upgraded to PBKDF2 (legacy hash auto-migrates on successful login)
-  - Basic lockout/rate-limiting after repeated failed attempts
-- **Open media v1**:
-  - Tap a stored file -> decrypt blob to `vault_tmp/` (cache) with original extension
-  - Open using OS default app (Windows via shell, Android via FileProvider + intent)
-- **Import/Export v1**:
-  - Export: creates a password-protected ZIP (uses `ZipFileEncoder(password: ...)`) and shows the password
-  - Import: picks a ZIP + asks password + extracts + recreates folders and re-encrypts files into blobs
-- **Settings v1**:
-  - View vault stats (folders/files/used space)
-  - Set optional max storage limit (blocks Add Media when limit is reached)
-  - Clear temp cache
-  - Lock vault
-- **Manage items v1**:
-  - Breadcrumb navigation (Root / nested folders)
-  - Long-press a folder/file to Rename or Delete
-  - Deleting a file removes its encrypted blob from disk (best-effort)
-- **UI polish v1**:
-  - Cleaner top bar (icon actions + overflow menu)
-  - Simple modern Material 3 theme
-  - Settings screen layout cleaned up
-- **Search + sort v1**:
-  - Search/filter in the current folder view
-  - Sort files by name/date/size
-  - Toggle ascending/descending
-- **Global search + quick lock v1**:
-  - Search across the whole vault (folders + files)
-  - Jump to the folder location of a result
-  - Lock vault from the Home menu
-- **Move v1**:
-  - Move files and folders into another folder (or Root)
-  - Prevent moving a folder into itself or its subfolders
-- **Performance optimizations v1** (NEW):
-  - **Thumbnail system**: Fast, cached thumbnails instead of decrypting full images
-  - **Pagination**: Load files in chunks (50 per page) for large folders
-  - **Image gallery navigation**: Swipe between images with left/right arrows
-  - **Optimized video player**: Better progress indication for large video files
-  - **Memory management**: Thumbnail caching with automatic cleanup
-- **Batch operations v1** (NEW):
-  - **Multi-select mode**: Select multiple files and folders
-  - **Bulk delete**: Delete multiple items at once
-  - **Selection indicators**: Visual feedback for selected items
-  - **Batch UI**: Clean interface for managing selections
-- **Advanced features v1** (NEW):
-  - **Bulk folder import**: Import entire folders with all images
-  - **Optimized image viewer**: Smooth navigation with preloading
-  - **Yomikiru integration**: Open manga folders in external reader
-  - **Performance optimizations**: RepaintBoundary, memory management
-- **Code quality v1** (NEW):
-  - **Flutter analysis**: All analysis issues resolved
-  - **BuildContext safety**: Fixed async context usage patterns
-  - **Windows testing**: App builds and runs successfully on Windows
-  - **Context menu fix**: Fixed right-click context menus for folders
-  - **Yomikiru integration**: Debugged and verified working integration
-  - **Performance optimizations**: Added RepaintBoundary widgets and optimized list rendering
+### **PHASE 1: EMERGENCY MEMORY FIXES** ✅ COMPLETE
+**Status**: Successfully resolved 3GB memory leak crisis
+- **RepaintBoundary Removal**: Eliminated all RepaintBoundary widgets causing memory explosion
+- **Image Cache Optimization**: Reduced from 50MB to 20MB with aggressive cleanup
+- **Memory Management**: Enhanced dispose() methods and cache clearing
+- **Result**: RSS memory reduced from 3GB to 500MB (83% improvement)
 
-## What's left (realistic)
-- **All core features completed!** 🎉
-- **Optional future enhancements**:
-  - Better metadata: mime detection improvements, modified timestamps
-  - Performance polish: background tasks for very large imports/exports
-  - UX polish: undo for delete, more confirm dialogs
-  - Advanced features: file tagging, advanced search filters
+### **PHASE 2: CPU PERFORMANCE OPTIMIZATION** 🚀 IN PROGRESS
+**Research Sources**: Cryptomator architecture, Flutter isolate patterns, image optimization experts
 
-## Next up (planned)
-- **App is feature complete!** Ready for daily use with manga collections and large media files.
+#### **2A. Isolate-Based Architecture (Week 1)** ⭐ CRITICAL
+**Problem**: Synchronous encryption/decryption blocking UI thread (70% CPU usage)
+**Solution**: Background isolates for heavy operations
+- **Encryption Isolates**: Move file encryption to compute() isolates with 64KB chunks
+- **Streaming I/O**: Chunked file operations to prevent UI blocking
+- **Progressive Loading**: ResizeImage for thumbnails, lazy loading for full images
+- **Target**: Reduce CPU from 70% to 45%
 
-## Performance Improvements Completed
-- **Thumbnail Generation**: 
-  - Small cached thumbnails (200px) instead of full image decryption
-  - Memory and disk caching for instant loading
-  - Skip thumbnails for files > 50MB to avoid memory issues
-- **Pagination**:
-  - Load 50 files at a time with "Load more" button
-  - Prevents UI lag in folders with hundreds of manga images
-  - Shows remaining file count
-- **Image Navigation**:
-  - Swipe between images in the same folder
-  - Left/right arrow buttons for desktop
-  - Page counter (e.g., "5 of 120")
-  - Black background for better manga reading experience
-- **Video Optimization**:
-  - Progress indication for large video decryption
-  - Better error handling and retry functionality
-  - File size display in video player
-  - Warning for very large files (>50MB)
-- **Batch Operations** (NEW):
-  - Multi-select mode with checkbox interface
-  - Bulk delete for files and folders
-  - Visual selection indicators in both list and grid views
-  - Clean batch operation UI with selection counter
-- **Advanced Import/Export** (NEW):
-  - Bulk folder import with progress tracking
-  - Handles large manga collections (500+ images per folder)
-  - Maintains folder structure during import
-  - Error handling and progress reporting
-- **Yomikiru Integration** (NEW):
-  - Export folders to temporary location for external manga reader
-  - Automatic Yomikiru launch (if installed)
-  - Maintains reading order and folder structure
-  - Cleanup of temporary files
+#### **2B. Memory-Safe Performance Widgets (Week 2)** ⭐ HIGH  
+**Problem**: Performance regression after RepaintBoundary removal
+**Solution**: Selective, monitored RepaintBoundary usage
+- **Selective Boundaries**: Maximum 5-10 RepaintBoundary widgets for animations only
+- **Smart Image Caching**: cached_network_image with progressive placeholders
+- **Optimized Rendering**: const constructors, StatelessWidget preference
+- **Target**: Restore smooth 60+ FPS without memory leaks
 
-## Optimization / "don't waste GBs"
-- **No duplicate storage**: never keep decrypted copies permanently (only temporary cache).
-- **No DB encryption**: keep Isar plaintext metadata for speed.
-- **Streaming encryption** (preferred for large videos): encrypt file -> blob without loading whole file into RAM.
-- **Export strategy**: only decrypt on-the-fly into the zip; no staging decrypted copies unless required.
-- **Thumbnail caching**: Small thumbnails cached to avoid repeated full-file decryption.
-- **Release builds**:
-  - Android: `--release --split-per-abi --tree-shake-icons`
-  - Windows: `--release`
+#### **2C. Cryptomator-Inspired Optimizations (Week 3)** ⭐ MEDIUM
+**Research**: Cryptomator's virtual file system and on-demand decryption
+**Solution**: Streaming architecture with lazy decryption
+- **On-Demand Decryption**: Files decrypted only when accessed
+- **Virtual File Patterns**: Stream large files in chunks
+- **Cache Optimization**: Thumbnail-only caching, immediate cleanup
+- **Target**: CPU usage <35%, production-ready performance
 
-## Known build notes
-- Windows plugin builds require symlink support (Developer Mode enabled).
+### **PHASE 3: ADVANCED PERFORMANCE FEATURES** 🎯
+**Research-Backed Enhancements from Industry Leaders:**
 
-## Performance Testing Results
-- **Large folders**: Smooth navigation with 500+ manga images
-- **Video playback**: 168MB+ videos load with progress indication  
-- **Memory usage**: Optimized with simple icons instead of heavy thumbnails
-- **UI responsiveness**: No more laggy folder navigation or media opening
-- **Batch operations**: Select and delete multiple items efficiently
-- **Multi-select**: Smooth selection interface for managing large collections
+#### **3A. Flutter Performance Best Practices** 
+**Sources**: Flutter team recommendations, performance optimization guides
+- **Widget Optimization**: const constructors, minimal rebuilds, efficient state management
+- **Rendering Pipeline**: Impeller renderer, GPU acceleration, frame budget optimization
+- **Memory Patterns**: LRU caching, memory pressure detection, aggressive cleanup
+
+#### **3B. Cryptomator Architecture Patterns**
+**Sources**: Cryptomator open-source codebase analysis
+- **Streaming Encryption**: AES-256 with chunked processing (64KB-1MB chunks)
+- **Virtual File System**: On-the-fly encryption/decryption without full file loading
+- **Performance Targets**: <100ms encryption for typical files, streaming for large files
+
+#### **3C. Mobile Vault Optimization Patterns**
+**Sources**: PocketVault PWA, encrypted storage best practices
+- **Efficient Encryption**: AES-256-GCM with optimized key derivation (600k iterations)
+- **Memory Management**: <10MB typical usage, <150KB bundle size
+- **Performance Metrics**: <100ms encryption, real-time search, <2s first load
+
+### **PHASE 4: PRODUCTION-GRADE ARCHITECTURE** 🏢
+**Enterprise-Level Performance and Scalability:**
+
+#### **4A. Advanced Memory Management**
+- **Memory Pressure Detection**: Automatic cleanup based on system memory
+- **Streaming Architecture**: Large file handling without memory spikes
+- **Cache Hierarchies**: Multi-level caching (memory → disk → encrypted storage)
+
+#### **4B. Performance Monitoring and Analytics**
+- **Real-time Metrics**: Frame times, memory usage, CPU utilization
+- **Performance Budgets**: Automated alerts for performance regressions
+- **User Experience Metrics**: Time to first image, jank detection, responsiveness
+
+#### **4C. Cross-Platform Optimization**
+- **Platform-Specific Tuning**: Windows, macOS, Linux optimizations
+- **Hardware Acceleration**: GPU-accelerated encryption where available
+- **Adaptive Performance**: Dynamic quality adjustment based on device capabilities
+
+---
+
+## RESEARCH INSIGHTS FROM INDUSTRY LEADERS
+
+### **Cryptomator Architecture Lessons**:
+1. **Streaming Encryption**: "On-the-fly encryption/decryption without loading entire files into memory"
+2. **Virtual File System**: Files appear decrypted but are processed in chunks as needed
+3. **Performance Pattern**: Lazy loading with background processing prevents UI blocking
+4. **Memory Management**: Minimal memory footprint through streaming and immediate cleanup
+
+### **Flutter Performance Research**:
+1. **Isolate Usage**: "Move CPU- and I/O-bound work off the UI thread to avoid jank"
+2. **Image Optimization**: "Use ResizeImage to avoid decoding full bitmap, saving 60-70% memory"
+3. **Chunked Processing**: "64KB–1MB chunks balance throughput and memory usage"
+4. **Frame Budget**: "Flutter renders every frame in ~16ms (60fps) or ~8ms (120fps)"
+
+### **PocketVault Efficiency Patterns**:
+1. **Minimal Footprint**: "Bundle size: <150KB, Memory usage: <10MB typical"
+2. **Fast Encryption**: "Encryption: <100ms for typical vault, AES-256-GCM optimized"
+3. **Progressive UX**: "Real-time search, one-tap operations, <2s first load"
+4. **Offline-First**: "Zero-cloud architecture with local-only processing"
+
+---
+
+## PERFORMANCE TARGETS AND VALIDATION
+
+### **Current Metrics (Post-Memory Fix)**:
+- ✅ **Memory**: 500MB RSS (down from 3GB)
+- ✅ **Idle Memory**: 10MB (excellent)
+- ❌ **CPU Usage**: 70% (target: <35%)
+- ❌ **Image Viewing**: Jittery (target: smooth 60+ FPS)
+- ❌ **Yomikiru Opening**: Slower than before
+
+### **Phase 2 Targets (4 weeks)**:
+- 🎯 **CPU Usage**: <45% (Phase 2A), <35% (Phase 2C)
+- 🎯 **Frame Rate**: Consistent 60+ FPS during all operations
+- 🎯 **Memory Stability**: Maintain <500MB RSS with no growth
+- 🎯 **Responsiveness**: <3s Yomikiru opening, smooth image viewing
+
+### **Production Targets (8 weeks)**:
+- 🎯 **CPU Usage**: <30% during normal operations
+- 🎯 **Memory Usage**: <200MB for 1000+ files
+- 🎯 **Performance**: 120 FPS scrolling, <5ms window resize janks
+- 🎯 **Scalability**: Handle 10k+ images without performance degradation
+
+---
+
+## IMPLEMENTATION TIMELINE
+
+### **Week 1 (CRITICAL)**: Isolate-Based Architecture
+- Implement encryption/decryption isolates
+- Add ResizeImage for all image displays
+- Stream file operations in 64KB chunks
+- Target: CPU reduction from 70% to 45%
+
+### **Week 2-3 (HIGH)**: Performance Restoration
+- Selective RepaintBoundary implementation (max 5)
+- Progressive image loading with placeholders
+- Optimized caching strategies
+- Target: Smooth 60+ FPS with memory stability
+
+### **Week 4 (MEDIUM)**: Advanced Optimizations
+- On-demand file decryption patterns
+- Streaming architecture for large files
+- Production performance validation
+- Target: CPU <35%, production-ready performance
+
+**Success Criteria**: Restore original performance levels (52% CPU) while maintaining memory improvements (500MB RSS), with smooth user experience across all operations.

@@ -58,6 +58,15 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
   void dispose() {
     _fadeController.dispose();
     _pageController.dispose();
+    
+    // EMERGENCY: Aggressive memory cleanup
+    _imageCache.clear();
+    _preloadingIndices.clear();
+    _imageFiles.clear();
+    
+    // Clear image cache to prevent memory leaks
+    PaintingBinding.instance.imageCache.clear();
+    
     super.dispose();
   }
 
@@ -175,22 +184,18 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
       ),
       body: Stack(
         children: [
-          // Optimized PageView with RepaintBoundary
-          RepaintBoundary(
-            child: PageView.builder(
-              controller: _pageController,
-              onPageChanged: _onPageChanged,
-              itemCount: _imageFiles.length,
-              itemBuilder: (context, index) {
-                return RepaintBoundary(
-                  child: _OptimizedImagePage(
-                    file: _imageFiles[index],
-                    cachedFile: _imageCache[index],
-                    openService: _openService,
-                  ),
-                );
-              },
-            ),
+          // Optimized PageView - EMERGENCY: RepaintBoundary removed due to memory leak
+          PageView.builder(
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            itemCount: _imageFiles.length,
+            itemBuilder: (context, index) {
+              return _OptimizedImagePage(
+                file: _imageFiles[index],
+                cachedFile: _imageCache[index],
+                openService: _openService,
+              );
+            },
           ),
           
           // Navigation arrows with better performance
@@ -201,21 +206,19 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
               top: 0,
               bottom: 0,
               child: Center(
-                child: RepaintBoundary(
-                  child: AnimatedOpacity(
-                    opacity: _currentIndex > 0 ? 1.0 : 0.3,
-                    duration: const Duration(milliseconds: 200),
-                    child: IconButton(
-                      onPressed: _currentIndex > 0 ? () {
-                        _pageController.previousPage(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeInOut,
-                        );
-                      } : null,
-                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 32),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withValues(alpha: 0.5),
-                      ),
+                child: AnimatedOpacity(
+                  opacity: _currentIndex > 0 ? 1.0 : 0.3,
+                  duration: const Duration(milliseconds: 200),
+                  child: IconButton(
+                    onPressed: _currentIndex > 0 ? () {
+                      _pageController.previousPage(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeInOut,
+                      );
+                    } : null,
+                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 32),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -228,21 +231,19 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
               top: 0,
               bottom: 0,
               child: Center(
-                child: RepaintBoundary(
-                  child: AnimatedOpacity(
-                    opacity: _currentIndex < _imageFiles.length - 1 ? 1.0 : 0.3,
-                    duration: const Duration(milliseconds: 200),
-                    child: IconButton(
-                      onPressed: _currentIndex < _imageFiles.length - 1 ? () {
-                        _pageController.nextPage(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeInOut,
-                        );
-                      } : null,
-                      icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 32),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withValues(alpha: 0.5),
-                      ),
+                child: AnimatedOpacity(
+                  opacity: _currentIndex < _imageFiles.length - 1 ? 1.0 : 0.3,
+                  duration: const Duration(milliseconds: 200),
+                  child: IconButton(
+                    onPressed: _currentIndex < _imageFiles.length - 1 ? () {
+                      _pageController.nextPage(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeInOut,
+                      );
+                    } : null,
+                    icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 32),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -311,31 +312,29 @@ class _OptimizedImagePageState extends State<_OptimizedImagePage>
         }
         
         final file = snapshot.data!;
-        return RepaintBoundary(
-          child: InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 4.0,
-            child: Center(
-              child: Image.file(
-                file,
-                fit: BoxFit.contain,
-                // Performance optimizations
-                cacheWidth: null, // Let Flutter handle caching
-                cacheHeight: null,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (context, error, stackTrace) => const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.white, size: 64),
-                      SizedBox(height: 16),
-                      Text(
-                        'Could not render this image.',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ],
-                  ),
+        return InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: Center(
+            child: Image.file(
+              file,
+              fit: BoxFit.contain,
+              // Performance optimizations
+              cacheWidth: null, // Let Flutter handle caching
+              cacheHeight: null,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (context, error, stackTrace) => const Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.white, size: 64),
+                    SizedBox(height: 16),
+                    Text(
+                      'Could not render this image.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
                 ),
               ),
             ),

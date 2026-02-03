@@ -76,15 +76,6 @@ class YomikiruIntegrationService {
     }
   }
 
-  /// Schedule cleanup after a delay (fallback)
-  void _scheduleCleanup(String tempFolderPath, Duration delay) {
-    debugPrint('Scheduling fallback cleanup for $tempFolderPath in ${delay.inMinutes} minutes');
-    
-    Timer(delay, () {
-      _cleanupTempFolder(tempFolderPath);
-    });
-  }
-
   /// Clean up temporary folder
   Future<void> _cleanupTempFolder(String tempFolderPath) async {
     try {

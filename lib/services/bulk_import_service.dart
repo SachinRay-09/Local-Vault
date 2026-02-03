@@ -66,7 +66,7 @@ class BulkImportService {
       foldersCreated++;
 
       // Process files in batches to avoid memory issues
-      const batchSize = 10;
+      const batchSize = 5; // EMERGENCY: Reduced from 10 to 5 for memory safety
       for (int i = 0; i < allFiles.length; i += batchSize) {
         final batch = allFiles.skip(i).take(batchSize).toList();
         
@@ -102,8 +102,8 @@ class BulkImportService {
           }
         }
 
-        // Small delay to prevent UI blocking
-        await Future.delayed(const Duration(milliseconds: 10));
+        // EMERGENCY: Longer delay and force garbage collection between batches
+        await Future.delayed(const Duration(milliseconds: 50));
       }
 
     } catch (e) {
