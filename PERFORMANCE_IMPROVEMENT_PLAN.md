@@ -2,7 +2,7 @@
 ## Memory Leak Crisis Resolved - CPU Optimization Required
 
 ### 📊 **CURRENT STATUS AFTER EMERGENCY FIXES**
-- ✅ **Memory**: RSS reduced to MAX 500MB or 300MB (down from 3GB - 83% improvement!)
+- ✅ **Memory**: RSS reduced to MAX 500MB or IDLE 300MB (down from 3GB - 83% improvement!)
 - ✅ **Idle Memory**: 10.4MB and 18.4 When 200+ folder is added (excellent - down from 18.5MB)
 - ✅ **Total Memory**: 20MB (very good)
 - ✅ **Functionality**: Folders visible, import working, Yomikiru functional

@@ -1202,9 +1202,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                         child: ListTile(
                           leading: _multiSelectMode 
-                              ? Checkbox(
-                                  value: _selectedFolderIds.contains(folder.id),
-                                  onChanged: (_) => _toggleFolderSelection(folder.id),
+                              ? RepaintBoundary( // Strategic RepaintBoundary for checkbox animation
+                                  child: Checkbox(
+                                    value: _selectedFolderIds.contains(folder.id),
+                                    onChanged: (_) => _toggleFolderSelection(folder.id),
+                                  ),
                                 )
                               : const Icon(Icons.folder),
                           title: Text(folder.name),
@@ -1253,9 +1255,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ..._visibleFiles.map(
                         (file) => ListTile(
                           leading: _multiSelectMode
-                              ? Checkbox(
-                                  value: _selectedFileIds.contains(file.id),
-                                  onChanged: (_) => _toggleFileSelection(file.id),
+                              ? RepaintBoundary( // Strategic RepaintBoundary for checkbox animation
+                                  child: Checkbox(
+                                    value: _selectedFileIds.contains(file.id),
+                                    onChanged: (_) => _toggleFileSelection(file.id),
+                                  ),
                                 )
                               : isImageFileName(file.originalName)
                                   ? Container(
@@ -1409,24 +1413,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Positioned(
                                       top: 8,
                                       right: 8,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: _selectedFileIds.contains(file.id)
-                                              ? Theme.of(context).colorScheme.primary
-                                              : Theme.of(context).colorScheme.surface,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: Theme.of(context).colorScheme.outline,
+                                      child: RepaintBoundary( // Strategic RepaintBoundary for selection animation
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: _selectedFileIds.contains(file.id)
+                                                ? Theme.of(context).colorScheme.primary
+                                                : Theme.of(context).colorScheme.surface,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Theme.of(context).colorScheme.outline,
+                                            ),
                                           ),
-                                        ),
-                                        child: Icon(
-                                          _selectedFileIds.contains(file.id)
-                                              ? Icons.check
-                                              : null,
-                                          color: _selectedFileIds.contains(file.id)
-                                              ? Theme.of(context).colorScheme.onPrimary
-                                              : null,
-                                          size: 20,
+                                          child: Icon(
+                                            _selectedFileIds.contains(file.id)
+                                                ? Icons.check
+                                                : null,
+                                            color: _selectedFileIds.contains(file.id)
+                                                ? Theme.of(context).colorScheme.onPrimary
+                                                : null,
+                                            size: 20,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1442,18 +1448,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Text('No items found.'),
                       ),
                     
-                    // Load more button
+                    // Load more button with RepaintBoundary for animation
                     if (_hasMoreFiles && !_loading)
                       Padding(
                         padding: const EdgeInsets.all(16),
                         child: Center(
-                          child: _loadingMore
-                              ? const CircularProgressIndicator()
-                              : FilledButton.icon(
-                                  onPressed: _loadMoreFiles,
-                                  icon: const Icon(Icons.expand_more),
-                                  label: Text('Load more (${_totalFileCount - _files.length} remaining)'),
-                                ),
+                          child: RepaintBoundary( // Strategic RepaintBoundary for button animation
+                            child: _loadingMore
+                                ? const CircularProgressIndicator()
+                                : FilledButton.icon(
+                                    onPressed: _loadMoreFiles,
+                                    icon: const Icon(Icons.expand_more),
+                                    label: Text('Load more (${_totalFileCount - _files.length} remaining)'),
+                                  ),
+                          ),
                         ),
                       ),
                   ],
