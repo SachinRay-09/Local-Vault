@@ -767,7 +767,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text('📋 Next Steps:', style: TextStyle(fontWeight: FontWeight.bold)),
                   SizedBox(height: 8),
-                  Text('1. Install Yomikiru at D:\\Yomikiru.exe and try again'),
+                  Text('1. Install Yomikiru at C:\\Users\\raysa\\AppData\\Local\\yomikiru\\Yomikiru.exe and try again'),
                   Text('2. Copy the path above and set it in Yomikiru settings'),
                   Text('3. Open the folder manually in your preferred manga reader'),
                 ],

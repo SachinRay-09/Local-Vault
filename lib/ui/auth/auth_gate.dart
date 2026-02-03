@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 import '../../services/auth_service.dart';
 import '../../services/secure_storage_service.dart';
 import '../home/home_screen.dart';
+import '../mobile/mobile_home_screen.dart';
 import 'login_screen.dart';
 import 'setup_screen.dart';
 
@@ -44,7 +46,11 @@ class _AuthGateState extends State<AuthGate> {
           auth: _auth,
           onUnlocked: () {
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              MaterialPageRoute(
+                builder: (_) => Platform.isAndroid || Platform.isIOS
+                    ? const MobileHomeScreen()
+                    : const HomeScreen(),
+              ),
             );
           },
           onResetDone: _reload,

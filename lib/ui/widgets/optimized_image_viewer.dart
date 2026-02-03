@@ -312,16 +312,25 @@ class _OptimizedImagePageState extends State<_OptimizedImagePage>
         }
         
         final file = snapshot.data!;
+        final screenSize = MediaQuery.of(context).size;
+        final maxDimension = (screenSize.width > screenSize.height 
+            ? screenSize.width 
+            : screenSize.height).round();
+        
         return InteractiveViewer(
           minScale: 0.5,
           maxScale: 4.0,
           child: Center(
-            child: Image.file(
-              file,
+            child: Image(
+              // PHASE 2A.3: Progressive Image Loading - ResizeImage for performance
+              image: ResizeImage(
+                FileImage(file),
+                width: maxDimension * 2, // 2x screen resolution for quality
+                height: maxDimension * 2,
+                allowUpscaling: false,
+              ),
               fit: BoxFit.contain,
               // Performance optimizations
-              cacheWidth: null, // Let Flutter handle caching
-              cacheHeight: null,
               filterQuality: FilterQuality.medium,
               errorBuilder: (context, error, stackTrace) => const Padding(
                 padding: EdgeInsets.all(24),

@@ -209,7 +209,8 @@ class YomikiruIntegrationService {
     if (Platform.isWindows) {
       // Try user-specified path first, then common locations
       final possiblePaths = [
-        r'D:\Yomikiru.exe', // User's specific path
+        r'C:\Users\raysa\AppData\Local\yomikiru\Yomikiru.exe', // User's specific path
+        r'D:\Yomikiru.exe', // Fallback to previous path
         r'C:\Program Files\Yomikiru\Yomikiru.exe',
         r'C:\Program Files (x86)\Yomikiru\Yomikiru.exe',
         path.join(Platform.environment['LOCALAPPDATA'] ?? '', 'Programs', 'Yomikiru', 'Yomikiru.exe'),

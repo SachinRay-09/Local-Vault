@@ -47,6 +47,22 @@ class VaultOpenService {
     return outFile.path;
   }
 
+  /// Decrypt a file to a specific path (used by Android manga service)
+  Future<void> decryptToSpecificPath(VaultFile file, String outputPath) async {
+    final masterKey32 = await secureStorage.getOrCreateMasterKey32();
+    final outputFile = File(outputPath);
+    
+    // Ensure output directory exists
+    await outputFile.parent.create(recursive: true);
+    
+    await crypto.decryptBlobToFile(
+      storedBlobName: file.storedBlobName,
+      ivBase64: file.ivBase64,
+      masterKey32: masterKey32,
+      outputFile: outputFile,
+    );
+  }
+
   static String _safeFilename(String name) {
     // Avoid path traversal and invalid characters (esp. Windows).
     final base = name.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_');

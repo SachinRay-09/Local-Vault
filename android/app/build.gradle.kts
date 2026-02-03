@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.yourname.local_vault"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 33
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
