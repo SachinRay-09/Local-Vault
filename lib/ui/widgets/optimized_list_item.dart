@@ -125,8 +125,8 @@ class OptimizedGridFileItem extends StatelessWidget {
           Ink(
             decoration: BoxDecoration(
               color: multiSelectMode && isSelected
-                  ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
-                  : Theme.of(context).colorScheme.surfaceContainerLow,
+                  ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                  : Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: multiSelectMode && isSelected
                   ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)

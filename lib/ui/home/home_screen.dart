@@ -6,6 +6,7 @@ import 'dart:io';
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/bulk_import_service.dart';
+import '../../services/encrypted_export_service.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/import_export_service.dart';
@@ -47,6 +48,11 @@ class _HomeScreenState extends State<HomeScreen> {
     repo: _repo,
     crypto: const FileCryptoService(),
     secureStorage: SecureStorageService.instance,
+  );
+
+  late final EncryptedExportService _encryptedExport = EncryptedExportService(
+    repo: _repo,
+    openService: _openService,
   );
 
   late final BulkImportService _bulkImport = BulkImportService(
@@ -627,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
@@ -656,7 +662,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Theme.of(context).colorScheme.primary),
               ),
@@ -729,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Theme.of(context).colorScheme.outline),
               ),
@@ -758,7 +764,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Theme.of(context).colorScheme.primary),
               ),
@@ -831,9 +837,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Rect.fromLTWH(0, 0, overlay.size.width, overlay.size.height),
       ),
       items: [
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'yomikiru',
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.auto_stories, size: 20),
               SizedBox(width: 12),
@@ -841,9 +847,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'move',
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.drive_file_move_outline, size: 20),
               SizedBox(width: 12),
@@ -851,9 +857,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'rename',
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.drive_file_rename_outline, size: 20),
               SizedBox(width: 12),
@@ -861,9 +867,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'delete',
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.delete_outline, size: 20),
               SizedBox(width: 12),
@@ -944,6 +950,228 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
+  }
+
+  /// Export folder as encrypted archive for PC-to-phone transfer
+  Future<void> _exportFolderEncrypted(VaultFolder folder) async {
+    try {
+      // Show password dialog
+      final password = await _showPasswordDialog(
+        title: 'Set Export Password',
+        message: 'Enter a password to encrypt the export file.\nYou will need this password to import on your phone:',
+      );
+      if (password == null || password.isEmpty) {
+        return; // User cancelled or empty password
+      }
+
+      // Choose export location
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Encrypted Vault',
+        fileName: '${folder.name}_encrypted.vault',
+        type: FileType.custom,
+        allowedExtensions: ['vault'],
+      );
+
+      if (outputPath == null) {
+        return; // User cancelled
+      }
+
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+
+      // Show progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Creating encrypted export...'),
+            ],
+          ),
+        ),
+      );
+
+      try {
+        final result = await _encryptedExport.exportFolderAsEncryptedArchive(
+          folder: folder,
+          password: password,
+          outputPath: outputPath,
+          onProgress: (progress) {
+            // Could update progress dialog here if needed
+            debugPrint('Export progress: $progress');
+          },
+        );
+
+        if (mounted) {
+          Navigator.pop(context); // Close progress dialog
+          
+          if (result.success) {
+            _showEncryptedExportSuccessDialog(result, password);
+          } else {
+            messenger.showSnackBar(
+              SnackBar(content: Text('Export failed: ${result.message}')),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // Close progress dialog
+          messenger.showSnackBar(
+            SnackBar(content: Text('Export failed: $e')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start export: $e')),
+        );
+      }
+    }
+  }
+
+  void _showEncryptedExportSuccessDialog(EncryptedExportResult result, String password) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Encrypted Export Ready'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(result.message),
+              const SizedBox(height: 16),
+              
+              // Password reminder
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.key, color: Colors.amber, size: 20),
+                        SizedBox(width: 8),
+                        Text('Remember this password:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      password,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'You will need this password to import the file on your phone.',
+                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text('Export file location:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  result.outputPath,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text(
+                '📱 Next steps:\n'
+                '1. Transfer this .vault file to your Android device\n'
+                '2. Open Local Vault on Android\n'
+                '3. Use "Import Encrypted Vault" from the menu\n'
+                '4. Select the .vault file from Downloads\n'
+                '5. Enter the password shown above',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: password));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Password copied to clipboard')),
+              );
+            },
+            child: const Text('Copy Password'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showPasswordDialog({
+    required String title,
+    required String message,
+  }) async {
+    String? password;
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 16),
+            TextField(
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+                helperText: 'Use a strong password for security',
+              ),
+              onChanged: (value) => password = value,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, password),
+            child: const Text('Create Export'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _renameFile(VaultFile file) async {
@@ -1069,7 +1297,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: _folderStack.isEmpty,
-      onPopInvokedWithResult: (didPop, _) async {
+      onPopInvoked: (didPop) async {
         if (didPop) return;
         await _popFolder();
       },
@@ -1225,6 +1453,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                       onTap: () => Navigator.pop(context, 'yomikiru'),
                                     ),
                                     ListTile(
+                                      leading: const Icon(Icons.lock),
+                                      title: const Text('Export Encrypted'),
+                                      subtitle: const Text('For PC-to-phone transfer'),
+                                      onTap: () => Navigator.pop(context, 'export_encrypted'),
+                                    ),
+                                    ListTile(
                                       leading: const Icon(Icons.drive_file_move_outline),
                                       title: const Text('Move'),
                                       onTap: () => Navigator.pop(context, 'move'),
@@ -1244,6 +1478,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             );
                             if (action == 'yomikiru') await _openFolderInYomikiru(folder);
+                            if (action == 'export_encrypted') await _exportFolderEncrypted(folder);
                             if (action == 'move') await _moveFolder(folder);
                             if (action == 'rename') await _renameFolder(folder);
                             if (action == 'delete') await _deleteFolder(folder);
@@ -1366,8 +1601,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Ink(
                                     decoration: BoxDecoration(
                                       color: _multiSelectMode && _selectedFileIds.contains(file.id)
-                                          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
-                                          : Theme.of(context).colorScheme.surfaceContainerLow,
+                                          ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                                          : Theme.of(context).colorScheme.surface,
                                       borderRadius: BorderRadius.circular(12),
                                       border: _multiSelectMode && _selectedFileIds.contains(file.id)
                                           ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)

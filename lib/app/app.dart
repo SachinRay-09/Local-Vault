@@ -24,8 +24,8 @@ class VaultApp extends StatelessWidget {
           centerTitle: false,
           elevation: 0,
         ),
-        cardTheme: CardThemeData(
-          color: colorScheme.surfaceContainerLow,
+        cardTheme: CardTheme(
+          color: colorScheme.surface,
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),

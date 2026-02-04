@@ -31,9 +31,30 @@ class SettingsService {
     return created;
   }
 
+  /// Get current settings (alias for getOrCreate for consistency)
+  Future<AppSettings> getSettings() async {
+    return getOrCreate();
+  }
+
+  /// Save settings to database
+  Future<void> saveSettings(AppSettings settings) async {
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(settings);
+    });
+  }
+
   Future<void> setMaxStorageBytes(int? bytes) async {
     final s = await getOrCreate();
     s.maxStorageBytes = bytes;
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(s);
+    });
+  }
+
+  /// Set custom temp folder path for Android manga reader integration
+  Future<void> setCustomTempFolderPath(String? path) async {
+    final s = await getOrCreate();
+    s.customTempFolderPath = path;
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(s);
     });

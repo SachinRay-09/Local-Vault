@@ -8,5 +8,8 @@ class AppSettings {
 
   /// Optional storage cap.
   int? maxStorageBytes;
+
+  /// Custom temp folder path for Android manga reader integration
+  String? customTempFolderPath;
 }
 

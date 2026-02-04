@@ -13,7 +13,7 @@ import 'package:pointycastle/macs/hmac.dart';
 class SecureStorageService {
   SecureStorageService._(this._storage);
 
-  static final FlutterSecureStorage _sharedStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _sharedStorage = FlutterSecureStorage();
 
   static SecureStorageService get instance => SecureStorageService._(_sharedStorage);
 

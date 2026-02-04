@@ -41,16 +41,14 @@ class ImportExportService {
     return FilePicker.platform.saveFile(
       dialogTitle: 'Export vault',
       fileName: 'local_vault_export.zip',
-      type: FileType.custom,
-      allowedExtensions: const ['zip'],
+      type: FileType.any,
     );
   }
 
   Future<String?> pickImportZipPath() async {
     final result = await FilePicker.platform.pickFiles(
       dialogTitle: 'Import vault ZIP',
-      type: FileType.custom,
-      allowedExtensions: const ['zip'],
+      type: FileType.any,
       allowMultiple: false,
       withData: false,
     );

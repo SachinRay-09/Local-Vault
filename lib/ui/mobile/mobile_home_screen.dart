@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/android_manga_service.dart';
+import '../../services/encrypted_export_service.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
+import '../../services/import_export_service.dart';
 import '../../services/secure_storage_service.dart';
+import '../../services/settings_service.dart';
 import '../../services/vault_open_service.dart';
 import '../../services/vault_repository.dart';
 import '../../utils/vault_format.dart';
@@ -35,7 +39,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     opener: FileOpenService(),
   );
 
+  late final SettingsService _settingsService = SettingsService();
+
   late final AndroidMangaService _androidManga = AndroidMangaService(
+    repo: _repo,
+    openService: _openService,
+    settingsService: _settingsService,
+  );
+
+  late final EncryptedExportService _encryptedExport = EncryptedExportService(
     repo: _repo,
     openService: _openService,
   );
@@ -58,11 +70,39 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   // Mobile UI state - minimal
   final Set<int> _selectedFileIds = {};
   final Set<int> _selectedFolderIds = {};
+  bool _selectionMode = false;
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _checkPermissionsOnStartup();
+  }
+
+  /// Check permissions on app startup and show notification if needed
+  Future<void> _checkPermissionsOnStartup() async {
+    try {
+      final hasPermissions = await _androidManga.hasAllStoragePermissions();
+      if (!hasPermissions && mounted) {
+        // Show a subtle notification that permissions are needed
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Tap "Request Permissions" in menu for full storage access'),
+                action: SnackBarAction(
+                  label: 'Grant Now',
+                  onPressed: _requestStoragePermissions,
+                ),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error checking permissions on startup: $e');
+    }
   }
 
   Future<void> _refresh() async {
@@ -75,6 +115,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       _hasMoreFiles = true;
       _selectedFileIds.clear();
       _selectedFolderIds.clear();
+      _selectionMode = false;
     });
     
     try {
@@ -253,56 +294,565 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     }
   }
 
+  // File and folder selection methods
+  void _toggleFileSelection(VaultFile file) {
+    setState(() {
+      if (_selectedFileIds.contains(file.id)) {
+        _selectedFileIds.remove(file.id);
+      } else {
+        _selectedFileIds.add(file.id);
+      }
+      _selectionMode = _selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
+    });
+  }
+
+  void _toggleFolderSelection(VaultFolder folder) {
+    setState(() {
+      if (_selectedFolderIds.contains(folder.id)) {
+        _selectedFolderIds.remove(folder.id);
+      } else {
+        _selectedFolderIds.add(folder.id);
+      }
+      _selectionMode = _selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedFileIds.clear();
+      _selectedFolderIds.clear();
+      _selectionMode = false;
+    });
+  }
+
+  Future<void> _deleteSelectedItems() async {
+    if (_selectedFileIds.isEmpty && _selectedFolderIds.isEmpty) return;
+
+    final totalSelected = _selectedFileIds.length + _selectedFolderIds.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Selected Items'),
+        content: Text('Delete $totalSelected selected items?\n\nThis action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      // Delete selected files
+      for (final fileId in _selectedFileIds) {
+        await _repo.deleteFile(fileId: fileId);
+      }
+
+      // Delete selected folders
+      for (final folderId in _selectedFolderIds) {
+        await _repo.deleteFolderRecursive(folderId: folderId);
+      }
+
+      _clearSelection();
+      await _refresh();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Deleted $totalSelected items')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete items: $e')),
+        );
+      }
+    }
+  }
+
+  void _showFileOptions(VaultFile file) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Open File'),
+              onTap: () {
+                Navigator.pop(context);
+                _openFile(file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.select_all),
+              title: Text(_selectedFileIds.contains(file.id) ? 'Deselect' : 'Select'),
+              onTap: () {
+                Navigator.pop(context);
+                _toggleFileSelection(file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete File'),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteFile(file);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteFile(VaultFile file) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete File'),
+        content: Text('Delete "${file.originalName}"?\n\nThis action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      try {
+        await _repo.deleteFile(fileId: file.id);
+        await _refresh();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Deleted "${file.originalName}"')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete file: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  // Import methods - Mobile implementations
+  
+  /// Add new folder
+  Future<void> _addFolder() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add New Folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Folder name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    final trimmed = (name ?? '').trim();
+    if (trimmed.isEmpty) return;
+
+    try {
+      debugPrint('DEBUG: Creating folder "$trimmed" in parent $_currentFolderId');
+      final folder = await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
+      debugPrint('DEBUG: Folder created with ID ${folder.id}');
+      await _refresh();
+      debugPrint('DEBUG: Refresh completed, folders count: ${_folders.length}');
+    } catch (e) {
+      debugPrint('DEBUG: Error creating folder: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create folder: $e')),
+        );
+      }
+    }
+  }
+
+  /// Add media files
+  Future<void> _addMedia() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any, // Fixed for Android 15 compatibility
+        allowMultiple: false,
+        withData: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final f = result.files.single;
+      try {
+        await _repo.addMedia(
+          originalName: f.name,
+          parentFolderId: _currentFolderId,
+          sourcePath: f.path,
+          bytes: f.bytes,
+          mimeType: f.extension,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        return;
+      }
+
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to select media: $e')),
+      );
+    }
+  }
+
+  /// Import folder (mobile version)
+  Future<void> _importFolder() async {
+    try {
+      // Use file picker to select folder on mobile
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: true,
+      );
+      
+      if (result == null || result.files.isEmpty) return;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Importing files...')),
+      );
+
+      int imported = 0;
+      for (final file in result.files) {
+        try {
+          await _repo.addMedia(
+            originalName: file.name,
+            parentFolderId: _currentFolderId,
+            sourcePath: file.path,
+            bytes: file.bytes,
+            mimeType: file.extension,
+          );
+          imported++;
+        } catch (e) {
+          debugPrint('Failed to import ${file.name}: $e');
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported $imported files')),
+      );
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Import failed: $e')),
+      );
+    }
+  }
+
+  /// Import ZIP file (supports encrypted .vault files from PC)
+  Future<void> _importZip() async {
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      
+      // Pick ZIP or vault file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any, // Fixed for Android 15 compatibility
+        dialogTitle: 'Select ZIP or Vault File',
+        initialDirectory: '/storage/emulated/0/Download',
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final filePath = result.files.first.path;
+      if (filePath == null) {
+        throw Exception('Invalid file path');
+      }
+
+      final fileName = result.files.first.name.toLowerCase();
+      
+      // Check if it's an encrypted vault file
+      if (fileName.endsWith('.vault')) {
+        // Handle encrypted vault import
+        final password = await _showPasswordDialog(
+          title: 'Enter Export Password',
+          message: 'Enter the password you used when exporting from PC:',
+        );
+        if (password == null) return;
+
+        // Show import progress dialog
+        _showEncryptedImportProgressDialog(filePath, password);
+        return;
+      }
+
+      // Handle regular ZIP import
+      if (!mounted) return;
+
+      final passwordController = TextEditingController();
+      final password = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Import ZIP'),
+          content: TextField(
+            controller: passwordController,
+            decoration: const InputDecoration(labelText: 'ZIP password (if encrypted)'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, passwordController.text),
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      );
+
+      final pw = (password ?? '').trim();
+      if (pw.isEmpty) return;
+
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(content: Text('Importing ZIP...')));
+
+      // Import using import export service
+      final importExport = ImportExportService(
+        repo: _repo,
+        crypto: const FileCryptoService(),
+        secureStorage: SecureStorageService.instance,
+      );
+
+      final res = await importExport.importFromZip(
+        zipPath: filePath,
+        password: pw,
+        destinationFolderId: _currentFolderId,
+      );
+      
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Imported ${res.filesImported} files, ${res.foldersCreated} folders')),
+      );
+      await _refresh();
+      
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Import failed: $e')),
+      );
+    }
+  }
+
+  /// Import Android vault (legacy format)
   Future<void> _importAndroidVault() async {
     try {
-      // Pick vault file
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['vault'],
+      final fileResult = await FilePicker.platform.pickFiles(
+        type: FileType.any, // Fixed for Android 15 compatibility
         dialogTitle: 'Select Android Vault File',
       );
 
-      if (result == null || result.files.isEmpty) {
-        return; // User cancelled
-      }
+      if (fileResult == null || fileResult.files.isEmpty) return;
 
-      final vaultFilePath = result.files.first.path;
+      final vaultFilePath = fileResult.files.first.path;
       if (vaultFilePath == null) {
         throw Exception('Invalid file path');
       }
 
       // Show password dialog
-      final password = await _showPasswordDialog();
-      if (password == null) {
-        return; // User cancelled
+      final password = await _showPasswordDialog(
+        title: 'Enter Vault Password',
+        message: 'Enter the password for this Android vault:',
+      );
+      if (password == null) return;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Importing Android vault...')),
+      );
+
+      // Import using Android manga service
+      final importResult = await _androidManga.importAndroidVault(
+        vaultFilePath: vaultFilePath,
+        password: password,
+        onProgress: (progress) {
+          debugPrint('Import progress: $progress');
+        },
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      
+      if (importResult.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully imported ${importResult.filesImported} files'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _refresh();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: ${importResult.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
-
-      // Show import progress dialog
-      _showImportProgressDialog(vaultFilePath, password);
-
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to select vault file: $e')),
+        SnackBar(content: Text('Failed to import Android vault: $e')),
       );
     }
   }
 
-  Future<String?> _showPasswordDialog() async {
+  /// Show temp folder settings for manga reader integration
+  Future<void> _showTempFolderSettings() async {
+    try {
+      // Get current temp folder location
+      final currentLocation = await _androidManga.getCurrentTempFolderLocation();
+      
+      // Get available options
+      final options = await _androidManga.getAvailableTempFolderLocations();
+      
+      if (!mounted) return;
+      
+      final selectedOption = await showDialog<TempFolderOption>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Manga Reader Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Choose where to create temp folders for manga reading:'),
+              const SizedBox(height: 16),
+              Text(
+                'Current: $currentLocation',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text('Available locations:'),
+              const SizedBox(height: 8),
+              ...options.map((option) => ListTile(
+                title: Text(option.name),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(option.path, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                    Text(option.description, style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+                leading: option.isRecommended 
+                    ? const Icon(Icons.star, color: Colors.orange)
+                    : const Icon(Icons.folder),
+                onTap: () => Navigator.pop(context, option),
+              )),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ],
+        ),
+      );
+
+      if (selectedOption == null) return;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Setting temp folder location...')),
+      );
+
+      final success = await _androidManga.setCustomTempFolderLocation(selectedOption.path);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Temp folder set to: ${selectedOption.name}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to set temp folder location'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Settings error: $e')),
+      );
+    }
+  }
+
+  void _showEncryptedImportProgressDialog(String vaultFilePath, String password) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _EncryptedImportProgressScreen(
+          vaultFilePath: vaultFilePath,
+          password: password,
+          encryptedExport: _encryptedExport,
+          onComplete: () {
+            Navigator.of(context).pop(); // Pop the import screen
+            _refresh(); // Refresh the main screen
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _showPasswordDialog({
+    String title = 'Enter Password',
+    String message = 'Enter password:',
+  }) async {
     String? password;
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Enter Vault Password'),
-        content: TextField(
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Password',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) => password = value,
-          autofocus: true,
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 16),
+            TextField(
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) => password = value,
+              autofocus: true,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -318,440 +868,257 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  void _showImportProgressDialog(String vaultFilePath, String password) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _ImportProgressScreen(
-          vaultFilePath: vaultFilePath,
-          password: password,
-          androidManga: _androidManga,
-          onComplete: () {
-            Navigator.of(context).pop(); // Pop the import screen
-            _refresh(); // Refresh the main screen
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _exportForAndroid(VaultFolder folder) async {
-    final messenger = ScaffoldMessenger.of(context);
-    
+  /// Show storage permissions dialog and request permissions
+  Future<void> _requestStoragePermissions() async {
     try {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Exporting "${folder.name}" for Android...')),
-      );
-
-      final result = await _androidManga.exportFolderForAndroid(folder);
+      final result = await _androidManga.requestAllStoragePermissions();
       
       if (!mounted) return;
-      messenger.hideCurrentSnackBar();
       
-      if (result.success) {
-        _showAndroidExportSuccessDialog(result);
-      } else {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Export failed: ${result.message}')),
+      if (result.granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: Colors.green,
+          ),
         );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
-    }
-  }
-
-  void _showAndroidExportSuccessDialog(AndroidExportResult result) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.android, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Android Export Ready'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(result.message),
-            const SizedBox(height: 16),
-            const Text('Export file created at:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SelectableText(
-                result.exportPath,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '📱 Next steps:\n'
-              '1. Transfer this file to your Android device\n'
-              '2. Open Local Vault on Android\n'
-              '3. Import the vault file\n'
-              '4. Enter your password to decrypt',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await _androidManga.shareVaultFile(result.exportPath);
-            },
-            child: const Text('Share File'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openInMangaReader(VaultFolder folder) async {
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    
-    try {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Preparing "${folder.name}" for manga reader...')),
-      );
-
-      final result = await _androidManga.openInMangaReader(folder);
-      
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      
-      // Use callback to avoid BuildContext across async gaps
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _showMangaReaderDialog(folder.name, result);
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to open in manga reader: $e')),
-      );
-    }
-  }
-
-  void _showMangaReaderDialog(String folderName, AndroidMangaReaderResult result) async {
-    // Check if Mihon is installed
-    final mihonInstalled = await _androidManga.isMihonInstalled();
-    
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(
-              result.success ? Icons.check_circle : Icons.info,
-              color: result.success ? Colors.green : Colors.blue,
-            ),
-            const SizedBox(width: 8),
-            Text(result.success ? 'Ready to Read' : 'Manual Setup Required'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(result.message),
-              
-              if (result.success) ...[
+      } else {
+        // Show permission explanation dialog
+        final shouldOpenSettings = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Storage Permissions Required'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(result.message),
                 const SizedBox(height: 16),
-                
-                // Mihon detection status
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: mihonInstalled ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: mihonInstalled ? Colors.green : Colors.orange,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        mihonInstalled ? Icons.check_circle : Icons.warning,
-                        color: mihonInstalled ? Colors.green : Colors.orange,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          mihonInstalled 
-                              ? '✅ Mihon detected on your device!'
-                              : '⚠️ Mihon not found - install from GitHub',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: mihonInstalled ? Colors.green : Colors.orange,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const Text(
+                  'This app needs full storage access to:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                
-                const SizedBox(height: 16),
-                
-                // Temp folder path display
-                const Text('📁 Temp folder location:', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
+                const Text('• Import/export manga collections'),
+                const Text('• Create temp folders for manga readers'),
+                const Text('• Access files in Downloads folder'),
+                const Text('• Save files to custom locations'),
+                if (result.needsSettings) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Please enable "All files access" in Settings.',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SelectableText(
-                        result.tempFolderPath,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Copy this path to open in your manga reader app',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 16),
-                const Text('📚 Recommended manga readers:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                ..._androidManga.getRecommendedMangaReaders().map(
-                  (reader) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      children: [
-                        Icon(
-                          reader.isPriority ? Icons.star : Icons.circle,
-                          size: 12,
-                          color: reader.isPriority ? Colors.amber : Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '${reader.name} - ${reader.description}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: reader.isPriority ? FontWeight.bold : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                ],
               ],
-              
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '🔒 Security: Click "Clean Up" when finished reading to remove temp files and protect your data.',
-                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-                ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
               ),
+              if (result.needsSettings)
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Open Settings'),
+                )
+              else
+                FilledButton(
+                  onPressed: () async {
+                    Navigator.pop(context, false);
+                    await _requestStoragePermissions(); // Retry
+                  },
+                  child: const Text('Try Again'),
+                ),
             ],
           ),
-        ),
-        actions: [
-          if (result.success) ...[
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Keep Reading'),
-            ),
-            if (mihonInstalled)
-              FilledButton.icon(
-                onPressed: () => _handleMihonLaunch(dialogContext, result.tempFolderPath),
-                icon: const Icon(Icons.auto_stories),
-                label: const Text('Open in Mihon'),
-              )
-            else
-              FilledButton(
-                onPressed: () => _handleCleanup(dialogContext, result.tempFolderPath),
-                child: const Text('Clean Up'),
-              ),
-          ] else ...[
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('OK'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+        );
 
-  void _handleMihonLaunch(BuildContext dialogContext, String tempFolderPath) async {
-    await _androidManga.launchMihon(tempFolderPath);
-    // Use post frame callback to ensure safe context usage
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && Navigator.canPop(dialogContext)) {
-        Navigator.pop(dialogContext);
+        if (shouldOpenSettings == true) {
+          await openAppSettings();
+        }
       }
-    });
-  }
-
-  void _handleCleanup(BuildContext dialogContext, String tempFolderPath) async {
-    await _androidManga.cleanupMangaReaderTemp(tempFolderPath);
-    // Use post frame callback to ensure safe context usage
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && Navigator.canPop(dialogContext)) {
-        Navigator.pop(dialogContext);
-        // Additional callback for snackbar
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Temp files cleaned up successfully!')),
-            );
-          }
-        });
-      }
-    });
-  }
-
-  void _showFolderOptions(VaultFolder folder) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.auto_stories),
-              title: const Text('Open in Manga Reader'),
-              subtitle: const Text('Export to temp folder and open with external app'),
-              onTap: () {
-                Navigator.pop(context);
-                _openInMangaReader(folder);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.android),
-              title: const Text('Export for Android'),
-              subtitle: const Text('Create encrypted file for transfer'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportForAndroid(folder);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_open),
-              title: const Text('Open Folder'),
-              onTap: () {
-                Navigator.pop(context);
-                _openFolder(folder);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Permission error: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: _folderStack.isEmpty,
-      onPopInvokedWithResult: (didPop, _) async {
+      onPopInvoked: (didPop) async {
         if (didPop) return;
         await _popFolder();
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(_folderStack.isEmpty ? 'Local Vault' : _folderStack.last.name),
+          leading: _selectionMode 
+              ? IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: _clearSelection,
+                )
+              : null,
           actions: [
-            // Removed grid/list toggle to keep UI simple and lightweight
-            PopupMenuButton<String>(
-              onSelected: (value) async {
-                switch (value) {
-                  case 'import_android':
-                    await _importAndroidVault();
-                    break;
-                  case 'search':
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => GlobalSearchScreen(repo: _repo)),
-                    );
-                    break;
-                  case 'settings':
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                    );
-                    break;
-                  case 'lock':
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const AuthGate()),
-                      (_) => false,
-                    );
-                    break;
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'import_android',
-                  child: ListTile(
-                    leading: Icon(Icons.android),
-                    title: Text('Import Android Vault'),
-                    contentPadding: EdgeInsets.zero,
+            if (_selectionMode) ...[
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: _deleteSelectedItems,
+              ),
+              IconButton(
+                icon: const Icon(Icons.select_all),
+                onPressed: () {
+                  setState(() {
+                    if (_selectedFileIds.length == _visibleFiles.length && 
+                        _selectedFolderIds.length == _visibleFolders.length) {
+                      // Deselect all
+                      _clearSelection();
+                    } else {
+                      // Select all
+                      _selectedFileIds.clear();
+                      _selectedFolderIds.clear();
+                      _selectedFileIds.addAll(_visibleFiles.map((f) => f.id));
+                      _selectedFolderIds.addAll(_visibleFolders.map((f) => f.id));
+                    }
+                  });
+                },
+              ),
+            ] else ...[
+              // Top bar buttons for common actions
+              IconButton(
+                icon: const Icon(Icons.create_new_folder),
+                onPressed: _addFolder,
+                tooltip: 'Add Folder',
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_photo_alternate),
+                onPressed: _addMedia,
+                tooltip: 'Add Media',
+              ),
+              IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => GlobalSearchScreen(repo: _repo)),
+                  );
+                },
+                tooltip: 'Search',
+              ),
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  switch (value) {
+                    case 'import_folder':
+                      await _importFolder();
+                      break;
+                    case 'import_zip':
+                      await _importZip();
+                      break;
+                    case 'import_android':
+                      await _importAndroidVault();
+                      break;
+                    case 'export_all':
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Export not yet implemented on mobile')),
+                      );
+                      break;
+                    case 'temp_folder_settings':
+                      await _showTempFolderSettings();
+                      break;
+                    case 'request_permissions':
+                      await _requestStoragePermissions();
+                      break;
+                    case 'settings':
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      );
+                      break;
+                    case 'lock':
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const AuthGate()),
+                        (_) => false,
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'import_folder',
+                    child: ListTile(
+                      leading: Icon(Icons.folder),
+                      title: Text('Import Folder'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: 'search',
-                  child: ListTile(
-                    leading: Icon(Icons.search),
-                    title: Text('Search'),
-                    contentPadding: EdgeInsets.zero,
+                  PopupMenuItem(
+                    value: 'import_zip',
+                    child: ListTile(
+                      leading: Icon(Icons.archive),
+                      title: Text('Import ZIP'),
+                      subtitle: Text('Supports encrypted .vault files'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                ),
-                PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'settings',
-                  child: ListTile(
-                    leading: Icon(Icons.settings),
-                    title: Text('Settings'),
-                    contentPadding: EdgeInsets.zero,
+                  PopupMenuItem(
+                    value: 'import_android',
+                    child: ListTile(
+                      leading: Icon(Icons.android),
+                      title: Text('Import Android Vault'),
+                      subtitle: Text('Legacy format'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: 'lock',
-                  child: ListTile(
-                    leading: Icon(Icons.lock),
-                    title: Text('Lock Vault'),
-                    contentPadding: EdgeInsets.zero,
+                  PopupMenuItem(
+                    value: 'export_all',
+                    child: ListTile(
+                      leading: Icon(Icons.upload),
+                      title: Text('Export All'),
+                      subtitle: Text('Coming soon'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'temp_folder_settings',
+                    child: ListTile(
+                      leading: Icon(Icons.folder_open),
+                      title: Text('Manga Reader Settings'),
+                      subtitle: Text('Configure temp folder location'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'request_permissions',
+                    child: ListTile(
+                      leading: Icon(Icons.security),
+                      title: Text('Request Permissions'),
+                      subtitle: Text('Grant full storage access'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'settings',
+                    child: ListTile(
+                      leading: Icon(Icons.settings),
+                      title: Text('Settings'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'lock',
+                    child: ListTile(
+                      leading: Icon(Icons.lock),
+                      title: Text('Lock Vault'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         body: _loading
@@ -781,20 +1148,34 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final folder = _visibleFolders[index];
+                          final isSelected = _selectedFolderIds.contains(folder.id);
                           return Card(
                             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
                             child: ListTile(
                               dense: true,
-                              leading: const Icon(Icons.folder, size: 20),
+                              leading: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_selectionMode)
+                                    Checkbox(
+                                      value: isSelected,
+                                      onChanged: (_) => _toggleFolderSelection(folder),
+                                    )
+                                  else
+                                    const Icon(Icons.folder, size: 20),
+                                ],
+                              ),
                               title: Text(
                                 folder.name,
                                 style: const TextStyle(fontSize: 14),
                               ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.more_vert, size: 20),
-                                onPressed: () => _showFolderOptions(folder),
-                              ),
-                              onTap: () => _openFolder(folder),
+                              onTap: _selectionMode 
+                                  ? () => _toggleFolderSelection(folder)
+                                  : () => _openFolder(folder),
+                              onLongPress: _selectionMode 
+                                  ? null 
+                                  : () => _toggleFolderSelection(folder),
                             ),
                           );
                         },
@@ -808,13 +1189,26 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         (context, index) {
                           final file = _visibleFiles[index];
                           final isImg = isImageFileName(file.originalName);
+                          final isSelected = _selectedFileIds.contains(file.id);
                           return Card(
                             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
                             child: ListTile(
                               dense: true, // Compact layout for mobile
-                              leading: Icon(
-                                isImg ? Icons.image : Icons.insert_drive_file,
-                                size: 20, // Smaller icons for performance
+                              leading: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_selectionMode)
+                                    Checkbox(
+                                      value: isSelected,
+                                      onChanged: (_) => _toggleFileSelection(file),
+                                    )
+                                  else
+                                    Icon(
+                                      isImg ? Icons.image : Icons.insert_drive_file,
+                                      size: 20, // Smaller icons for performance
+                                    ),
+                                ],
                               ),
                               title: Text(
                                 file.originalName,
@@ -826,7 +1220,18 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 formatBytes(file.byteSize),
                                 style: const TextStyle(fontSize: 12),
                               ),
-                              onTap: () => _openFile(file),
+                              trailing: _selectionMode 
+                                  ? null 
+                                  : IconButton(
+                                      icon: const Icon(Icons.more_vert, size: 16),
+                                      onPressed: () => _showFileOptions(file),
+                                    ),
+                              onTap: _selectionMode 
+                                  ? () => _toggleFileSelection(file)
+                                  : () => _openFile(file),
+                              onLongPress: _selectionMode 
+                                  ? null 
+                                  : () => _toggleFileSelection(file),
                             ),
                           );
                         },
@@ -863,7 +1268,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                               Text('No items found'),
                               SizedBox(height: 8),
                               Text(
-                                'Import an Android vault file to get started',
+                                'Import an encrypted vault file to get started',
                                 style: TextStyle(color: Colors.grey),
                               ),
                             ],
@@ -878,26 +1283,26 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 }
 
-// Separate screen for import progress to avoid BuildContext async issues
-class _ImportProgressScreen extends StatefulWidget {
+// Separate screen for encrypted import progress
+class _EncryptedImportProgressScreen extends StatefulWidget {
   final String vaultFilePath;
   final String password;
-  final AndroidMangaService androidManga;
+  final EncryptedExportService encryptedExport;
   final VoidCallback onComplete;
 
-  const _ImportProgressScreen({
+  const _EncryptedImportProgressScreen({
     required this.vaultFilePath,
     required this.password,
-    required this.androidManga,
+    required this.encryptedExport,
     required this.onComplete,
   });
 
   @override
-  State<_ImportProgressScreen> createState() => _ImportProgressScreenState();
+  State<_EncryptedImportProgressScreen> createState() => _EncryptedImportProgressScreenState();
 }
 
-class _ImportProgressScreenState extends State<_ImportProgressScreen> {
-  String _status = 'Starting import...';
+class _EncryptedImportProgressScreenState extends State<_EncryptedImportProgressScreen> {
+  String _status = 'Starting encrypted import...';
   bool _isComplete = false;
 
   @override
@@ -908,10 +1313,10 @@ class _ImportProgressScreenState extends State<_ImportProgressScreen> {
 
   Future<void> _performImport() async {
     try {
-      setState(() => _status = 'Validating vault file...');
+      setState(() => _status = 'Validating encrypted vault file...');
       
-      final result = await widget.androidManga.importAndroidVault(
-        vaultFilePath: widget.vaultFilePath,
+      final result = await widget.encryptedExport.importEncryptedArchive(
+        archivePath: widget.vaultFilePath,
         password: widget.password,
         onProgress: (progress) {
           if (mounted) {
@@ -929,7 +1334,7 @@ class _ImportProgressScreenState extends State<_ImportProgressScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Successfully imported ${result.filesImported} files'),
+              content: Text('Successfully imported ${result.filesImported} files into "${result.folderName}"'),
               backgroundColor: Colors.green,
             ),
           );
@@ -955,7 +1360,6 @@ class _ImportProgressScreenState extends State<_ImportProgressScreen> {
         setState(() => _status = 'Import failed: $e');
         await Future.delayed(const Duration(seconds: 2));
         
-        // Use post frame callback to avoid BuildContext async gap
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -975,7 +1379,7 @@ class _ImportProgressScreenState extends State<_ImportProgressScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Importing Vault'),
+        title: const Text('Importing Encrypted Vault'),
         automaticallyImplyLeading: _isComplete,
       ),
       body: Center(

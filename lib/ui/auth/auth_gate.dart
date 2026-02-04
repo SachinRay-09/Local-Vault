@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/secure_storage_service.dart';
@@ -25,6 +25,16 @@ class _AuthGateState extends State<AuthGate> {
     });
   }
 
+  /// Get the appropriate home screen based on platform
+  Widget _getHomeScreen() {
+    // Use mobile interface on Android, desktop interface on other platforms
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return const MobileHomeScreen();
+    } else {
+      return const HomeScreen();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<AuthState>(
@@ -47,9 +57,7 @@ class _AuthGateState extends State<AuthGate> {
           onUnlocked: () {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
-                builder: (_) => Platform.isAndroid || Platform.isIOS
-                    ? const MobileHomeScreen()
-                    : const HomeScreen(),
+                builder: (_) => _getHomeScreen(), // Use platform-appropriate interface
               ),
             );
           },

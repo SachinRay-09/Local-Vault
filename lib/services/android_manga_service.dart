@@ -5,23 +5,28 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:archive/archive.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
 import 'vault_repository.dart';
 import 'vault_open_service.dart';
 import 'vault_paths.dart';
+import 'settings_service.dart';
 
 /// Android-specific service for manga reading workflow
 /// Handles export from PC, import to Android, and integration with external manga readers
+/// Enhanced with custom temp folder locations and Mihon priority integration
 class AndroidMangaService {
   AndroidMangaService({
     required this.repo,
     required this.openService,
+    required this.settingsService,
   });
 
   final VaultRepository repo;
   final VaultOpenService openService;
+  final SettingsService settingsService;
 
   /// Export a folder for Android transfer (creates encrypted ZIP)
   Future<AndroidExportResult> exportFolderForAndroid(VaultFolder folder) async {
@@ -110,7 +115,7 @@ class AndroidMangaService {
     }
   }
 
-  /// Open folder in external manga reader
+  /// Open folder in external manga reader with enhanced Mihon integration
   Future<AndroidMangaReaderResult> openInMangaReader(VaultFolder folder) async {
     try {
       // Check storage permissions
@@ -123,8 +128,14 @@ class AndroidMangaService {
         );
       }
 
-      // Create temp folder for manga reader
-      final tempDir = await _createMangaReaderTempFolder(folder.name);
+      // Detect Mihon first
+      final mihonDetection = await detectMihon();
+      
+      // Get custom temp folder location
+      final tempBasePath = await getCurrentTempFolderLocation();
+      
+      // Create temp folder for manga reader in custom location
+      final tempDir = await _createMangaReaderTempFolder(folder.name, tempBasePath);
       
       // Export all images to temp folder
       final exportResult = await _exportFolderToTemp(folder, tempDir);
@@ -134,19 +145,24 @@ class AndroidMangaService {
           success: false,
           tempFolderPath: tempDir.path,
           message: 'Failed to export images: ${exportResult.message}',
+          mihonDetected: mihonDetection.isInstalled,
+          mihonAppName: mihonDetection.appName,
         );
       }
 
-      // Try to open with external manga reader apps
-      final readerResult = await _launchMangaReader(tempDir.path);
+      // Try to launch manga reader with Mihon priority
+      final readerResult = await _launchMangaReaderWithMihonPriority(tempDir.path, mihonDetection);
       
       return AndroidMangaReaderResult(
         success: true,
         tempFolderPath: tempDir.path,
         message: readerResult.success 
-            ? 'Opened in manga reader successfully'
-            : 'Images exported to: ${tempDir.path}\nOpen manually in your manga reader app',
+            ? 'Opened in ${readerResult.appName ?? 'manga reader'} successfully'
+            : 'Images exported to: ${tempDir.path}\n${mihonDetection.isInstalled ? 'Open Mihon and navigate to this folder' : 'Install Mihon for best experience'}',
         readerLaunched: readerResult.success,
+        mihonDetected: mihonDetection.isInstalled,
+        mihonAppName: mihonDetection.appName,
+        tempFolderLocation: tempBasePath,
       );
 
     } catch (e) {
@@ -227,14 +243,148 @@ class AndroidMangaService {
     ];
   }
 
-  /// Check if Mihon is installed on the device
-  Future<bool> isMihonInstalled() async {
+  /// Get current temp folder location setting
+  Future<String> getCurrentTempFolderLocation() async {
     try {
-      final mihonUri = Uri.parse('package:eu.kanade.tachiyomi');
-      return await canLaunchUrl(mihonUri);
+      final settings = await settingsService.getSettings();
+      if (settings.customTempFolderPath != null && settings.customTempFolderPath!.isNotEmpty) {
+        return settings.customTempFolderPath!;
+      }
+      
+      // Default to Manga folder in internal storage root (alongside DCIM, Download, Documents)
+      // This is the standard Android internal storage structure: /storage/emulated/0/
+      const mangaPath = '/storage/emulated/0/Manga/LocalVault';
+      return mangaPath;
     } catch (e) {
-      debugPrint('Error checking Mihon installation: $e');
+      debugPrint('Error getting temp folder location: $e');
+      // Final fallback to Manga folder
+      return '/storage/emulated/0/Manga/LocalVault';
+    }
+  }
+
+  /// Set custom temp folder location
+  Future<bool> setCustomTempFolderLocation(String folderPath) async {
+    try {
+      // Validate the folder path
+      final dir = Directory(folderPath);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      
+      // Test write permissions
+      final testFile = File(path.join(folderPath, 'test_write.tmp'));
+      await testFile.writeAsString('test');
+      await testFile.delete();
+      
+      // Save to settings
+      final settings = await settingsService.getSettings();
+      settings.customTempFolderPath = folderPath;
+      await settingsService.saveSettings(settings);
+      
+      debugPrint('Custom temp folder set to: $folderPath');
+      return true;
+    } catch (e) {
+      debugPrint('Error setting custom temp folder: $e');
       return false;
+    }
+  }
+
+  /// Get available temp folder locations for user selection
+  Future<List<TempFolderOption>> getAvailableTempFolderLocations() async {
+    final options = <TempFolderOption>[];
+    
+    try {
+      // Manga folder in internal storage root (RECOMMENDED - alongside DCIM, Download, Documents)
+      const mangaPath = '/storage/emulated/0/Manga/LocalVault';
+      options.add(TempFolderOption(
+        name: 'Manga/LocalVault',
+        path: mangaPath,
+        description: 'Recommended: In Internal Storage alongside DCIM, Download, Documents',
+        isRecommended: true,
+      ));
+      
+      // Public Downloads folder (alternative)
+      const downloadsPath = '/storage/emulated/0/Download/LocalVault';
+      options.add(TempFolderOption(
+        name: 'Download/LocalVault',
+        path: downloadsPath,
+        description: 'Alternative: In Downloads folder',
+        isRecommended: false,
+      ));
+      
+      // Mihon-compatible folder (if user prefers)
+      const mihonPath = '/storage/emulated/0/Mihon/LocalVault';
+      options.add(TempFolderOption(
+        name: 'Mihon/LocalVault',
+        path: mihonPath,
+        description: 'Mihon-specific folder (if Mihon is installed)',
+        isRecommended: false,
+      ));
+      
+      // Root storage location
+      const rootPath = '/storage/emulated/0/LocalVault';
+      options.add(TempFolderOption(
+        name: 'LocalVault (Root)',
+        path: rootPath,
+        description: 'Root storage location',
+        isRecommended: false,
+      ));
+      
+    } catch (e) {
+      debugPrint('Error getting temp folder options: $e');
+    }
+    
+    return options;
+  }
+
+  /// Check if Mihon is installed and get its details
+  Future<MihonDetectionResult> detectMihon() async {
+    try {
+      // Check for Mihon (Tachiyomi fork)
+      final mihonUri = Uri.parse('package:eu.kanade.tachiyomi');
+      final isMihonInstalled = await canLaunchUrl(mihonUri);
+      
+      if (isMihonInstalled) {
+        return MihonDetectionResult(
+          isInstalled: true,
+          appName: 'Mihon',
+          packageName: 'eu.kanade.tachiyomi',
+          description: 'Mihon manga reader detected - optimized integration available',
+          supportsLocalFolders: true,
+        );
+      }
+      
+      // Check for original Tachiyomi
+      final tachiyomiUri = Uri.parse('package:eu.kanade.tachiyomi.stable');
+      final isTachiyomiInstalled = await canLaunchUrl(tachiyomiUri);
+      
+      if (isTachiyomiInstalled) {
+        return MihonDetectionResult(
+          isInstalled: true,
+          appName: 'Tachiyomi',
+          packageName: 'eu.kanade.tachiyomi.stable',
+          description: 'Tachiyomi manga reader detected',
+          supportsLocalFolders: true,
+        );
+      }
+      
+      return MihonDetectionResult(
+        isInstalled: false,
+        appName: null,
+        packageName: null,
+        description: 'Mihon/Tachiyomi not found. Install Mihon for best experience.',
+        supportsLocalFolders: false,
+      );
+      
+    } catch (e) {
+      debugPrint('Error detecting Mihon: $e');
+      return MihonDetectionResult(
+        isInstalled: false,
+        appName: null,
+        packageName: null,
+        description: 'Error detecting manga readers: $e',
+        supportsLocalFolders: false,
+      );
     }
   }
 
@@ -434,31 +584,242 @@ class AndroidMangaService {
     }
   }
 
-  Future<bool> _checkStoragePermissions() async {
+  /// Request all necessary storage permissions for the app
+  /// This should be called on app startup or when accessing storage features
+  Future<StoragePermissionResult> requestAllStoragePermissions() async {
     try {
-      // Check if we have storage permissions
-      final status = await Permission.storage.status;
-      if (status.isGranted) {
-        return true;
+      if (!Platform.isAndroid) {
+        return StoragePermissionResult(
+          granted: true,
+          message: 'Storage permissions not required on this platform',
+        );
       }
 
-      // Request permission if not granted
-      final result = await Permission.storage.request();
-      return result.isGranted;
+      final deviceInfo = await DeviceInfoPlugin().androidInfo;
+      final sdkInt = deviceInfo.version.sdkInt;
+      
+      debugPrint('Requesting storage permissions for Android API $sdkInt');
+
+      if (sdkInt >= 33) {
+        // Android 13+ (API 33+) - Request granular media permissions
+        final permissions = [
+          Permission.photos,
+          Permission.videos,
+          Permission.audio,
+          Permission.manageExternalStorage,
+        ];
+        
+        final statuses = await permissions.request();
+        final allGranted = statuses.values.every((status) => status.isGranted);
+        
+        if (!allGranted) {
+          final deniedPermissions = statuses.entries
+              .where((entry) => !entry.value.isGranted)
+              .map((entry) => entry.key.toString())
+              .toList();
+          
+          return StoragePermissionResult(
+            granted: false,
+            message: 'Some permissions denied: ${deniedPermissions.join(', ')}',
+            needsSettings: statuses.values.any((status) => status.isPermanentlyDenied),
+          );
+        }
+        
+        return StoragePermissionResult(
+          granted: true,
+          message: 'All storage permissions granted for Android 13+',
+        );
+        
+      } else if (sdkInt >= 30) {
+        // Android 11-12 (API 30-32) - Request MANAGE_EXTERNAL_STORAGE
+        final status = await Permission.manageExternalStorage.request();
+        
+        if (status.isGranted) {
+          return StoragePermissionResult(
+            granted: true,
+            message: 'Full storage access granted for Android 11+',
+          );
+        } else {
+          return StoragePermissionResult(
+            granted: false,
+            message: 'MANAGE_EXTERNAL_STORAGE permission required for full file access',
+            needsSettings: status.isPermanentlyDenied,
+          );
+        }
+        
+      } else if (sdkInt >= 23) {
+        // Android 6-10 (API 23-29) - Request legacy storage permissions
+        final permissions = [
+          Permission.storage,
+        ];
+        
+        final statuses = await permissions.request();
+        final allGranted = statuses.values.every((status) => status.isGranted);
+        
+        if (allGranted) {
+          return StoragePermissionResult(
+            granted: true,
+            message: 'Storage permissions granted for Android 6-10',
+          );
+        } else {
+          return StoragePermissionResult(
+            granted: false,
+            message: 'Storage permission required',
+            needsSettings: statuses.values.any((status) => status.isPermanentlyDenied),
+          );
+        }
+        
+      } else {
+        // Android < 6 - No runtime permissions needed
+        return StoragePermissionResult(
+          granted: true,
+          message: 'No runtime permissions required for Android < 6',
+        );
+      }
+      
     } catch (e) {
-      debugPrint('Permission check error: $e');
-      return false;
+      debugPrint('Error requesting storage permissions: $e');
+      return StoragePermissionResult(
+        granted: false,
+        message: 'Error requesting permissions: $e',
+      );
     }
   }
 
-  Future<Directory> _createMangaReaderTempFolder(String folderName) async {
-    final tempDir = Directory.systemTemp;
-    final mangaDir = Directory(path.join(tempDir.path, 'local_vault_manga', folderName));
+  /// Check if all necessary storage permissions are granted
+  Future<bool> hasAllStoragePermissions() async {
+    try {
+      if (!Platform.isAndroid) return true;
+
+      final deviceInfo = await DeviceInfoPlugin().androidInfo;
+      final sdkInt = deviceInfo.version.sdkInt;
+
+      if (sdkInt >= 33) {
+        // Android 13+ - Check granular media permissions
+        final permissions = [
+          Permission.photos,
+          Permission.videos,
+          Permission.audio,
+          Permission.manageExternalStorage,
+        ];
+        
+        for (final permission in permissions) {
+          final status = await permission.status;
+          if (!status.isGranted) return false;
+        }
+        return true;
+        
+      } else if (sdkInt >= 30) {
+        // Android 11+ - Check MANAGE_EXTERNAL_STORAGE
+        final status = await Permission.manageExternalStorage.status;
+        return status.isGranted;
+        
+      } else if (sdkInt >= 23) {
+        // Android 6-10 - Check legacy storage permission
+        final status = await Permission.storage.status;
+        return status.isGranted;
+        
+      } else {
+        // Android < 6 - No runtime permissions needed
+        return true;
+      }
+      
+    } catch (e) {
+      debugPrint('Error checking storage permissions: $e');
+      return false;
+    }
+  }
+  /// Check storage permissions (legacy method - use hasAllStoragePermissions instead)
+  Future<bool> _checkStoragePermissions() async {
+    return await hasAllStoragePermissions();
+  }
+
+  Future<Directory> _createMangaReaderTempFolder(String folderName, [String? customBasePath]) async {
+    final basePath = customBasePath ?? await getCurrentTempFolderLocation();
+    final mangaDir = Directory(path.join(basePath, 'manga_temp', folderName));
+    
     if (await mangaDir.exists()) {
       await mangaDir.delete(recursive: true);
     }
     await mangaDir.create(recursive: true);
+    
+    debugPrint('Created manga temp folder: ${mangaDir.path}');
     return mangaDir;
+  }
+
+  Future<AndroidMangaReaderLaunchResult> _launchMangaReaderWithMihonPriority(
+    String folderPath, 
+    MihonDetectionResult mihonDetection
+  ) async {
+    try {
+      // First priority: Launch Mihon if detected
+      if (mihonDetection.isInstalled && mihonDetection.packageName != null) {
+        final mihonResult = await _launchSpecificMangaReader(
+          folderPath, 
+          mihonDetection.packageName!, 
+          mihonDetection.appName!
+        );
+        if (mihonResult.success) {
+          return mihonResult;
+        }
+      }
+
+      // Second priority: Try other manga readers
+      final readers = getRecommendedMangaReaders();
+      for (final reader in readers) {
+        if (reader.packageName == mihonDetection.packageName) continue; // Skip already tried
+        
+        try {
+          final result = await _launchSpecificMangaReader(folderPath, reader.packageName, reader.name);
+          if (result.success) {
+            return result;
+          }
+        } catch (e) {
+          debugPrint('Failed to launch ${reader.name}: $e');
+        }
+      }
+
+      // Third priority: Try to open folder with system file manager
+      final uri = Uri.parse('file://$folderPath');
+      final canLaunch = await canLaunchUrl(uri);
+      
+      if (canLaunch) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return AndroidMangaReaderLaunchResult(success: true, appName: 'File Manager');
+      }
+
+      return AndroidMangaReaderLaunchResult(success: false);
+    } catch (e) {
+      debugPrint('Manga reader launch error: $e');
+      return AndroidMangaReaderLaunchResult(success: false);
+    }
+  }
+
+  Future<AndroidMangaReaderLaunchResult> _launchSpecificMangaReader(
+    String folderPath, 
+    String packageName, 
+    String appName
+  ) async {
+    try {
+      // Try to launch with folder path (for apps that support it)
+      final appUri = Uri.parse('$packageName://local?path=${Uri.encodeComponent(folderPath)}');
+      if (await canLaunchUrl(appUri)) {
+        await launchUrl(appUri, mode: LaunchMode.externalApplication);
+        return AndroidMangaReaderLaunchResult(success: true, appName: appName);
+      }
+
+      // Fallback to package launch
+      final packageUri = Uri.parse('package:$packageName');
+      if (await canLaunchUrl(packageUri)) {
+        await launchUrl(packageUri);
+        return AndroidMangaReaderLaunchResult(success: true, appName: appName);
+      }
+
+      return AndroidMangaReaderLaunchResult(success: false);
+    } catch (e) {
+      debugPrint('Error launching $appName: $e');
+      return AndroidMangaReaderLaunchResult(success: false);
+    }
   }
 
   Future<AndroidExportTempResult> _exportFolderToTemp(VaultFolder folder, Directory tempDir) async {
@@ -489,44 +850,6 @@ class AndroidMangaService {
         filesExported: 0,
         message: 'Export failed: $e',
       );
-    }
-  }
-
-  Future<AndroidMangaReaderLaunchResult> _launchMangaReader(String folderPath) async {
-    try {
-      // First, try to launch Mihon specifically (user's preferred app)
-      final mihonResult = await launchMihon(folderPath);
-      if (mihonResult.success) {
-        return mihonResult;
-      }
-
-      // Try to open folder with system file manager
-      final uri = Uri.parse('file://$folderPath');
-      final canLaunch = await canLaunchUrl(uri);
-      
-      if (canLaunch) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return AndroidMangaReaderLaunchResult(success: true, appName: 'File Manager');
-      }
-
-      // If direct launch fails, try other manga reader apps
-      final readers = getRecommendedMangaReaders();
-      for (final reader in readers) {
-        try {
-          final readerUri = Uri.parse('package:${reader.packageName}');
-          if (await canLaunchUrl(readerUri)) {
-            await launchUrl(readerUri);
-            return AndroidMangaReaderLaunchResult(success: true, appName: reader.name);
-          }
-        } catch (e) {
-          debugPrint('Failed to launch ${reader.name}: $e');
-        }
-      }
-
-      return AndroidMangaReaderLaunchResult(success: false);
-    } catch (e) {
-      debugPrint('Manga reader launch error: $e');
-      return AndroidMangaReaderLaunchResult(success: false);
     }
   }
 
@@ -602,12 +925,18 @@ class AndroidMangaReaderResult {
   final String tempFolderPath;
   final String message;
   final bool readerLaunched;
+  final bool mihonDetected;
+  final String? mihonAppName;
+  final String? tempFolderLocation;
 
   AndroidMangaReaderResult({
     required this.success,
     required this.tempFolderPath,
     required this.message,
     this.readerLaunched = false,
+    this.mihonDetected = false,
+    this.mihonAppName,
+    this.tempFolderLocation,
   });
 }
 
@@ -646,5 +975,47 @@ class MangaReaderApp {
     required this.description,
     required this.supportsLocalFiles,
     this.isPriority = false,
+  });
+}
+
+class TempFolderOption {
+  final String name;
+  final String path;
+  final String description;
+  final bool isRecommended;
+
+  TempFolderOption({
+    required this.name,
+    required this.path,
+    required this.description,
+    required this.isRecommended,
+  });
+}
+
+class MihonDetectionResult {
+  final bool isInstalled;
+  final String? appName;
+  final String? packageName;
+  final String description;
+  final bool supportsLocalFolders;
+
+  MihonDetectionResult({
+    required this.isInstalled,
+    required this.appName,
+    required this.packageName,
+    required this.description,
+    required this.supportsLocalFolders,
+  });
+}
+
+class StoragePermissionResult {
+  final bool granted;
+  final String message;
+  final bool needsSettings;
+
+  StoragePermissionResult({
+    required this.granted,
+    required this.message,
+    this.needsSettings = false,
   });
 }

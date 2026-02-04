@@ -158,7 +158,7 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.7),
+        backgroundColor: Colors.black.withOpacity(0.7),
         foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,7 +218,7 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
                     } : null,
                     icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 32),
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.black.withValues(alpha: 0.5),
+                      backgroundColor: Colors.black.withOpacity(0.5),
                     ),
                   ),
                 ),
@@ -243,7 +243,7 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
                     } : null,
                     icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 32),
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.black.withValues(alpha: 0.5),
+                      backgroundColor: Colors.black.withOpacity(0.5),
                     ),
                   ),
                 ),

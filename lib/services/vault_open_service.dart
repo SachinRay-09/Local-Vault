@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 
 import '../models/vault_file.dart';
 import 'file_crypto_service.dart';
@@ -61,6 +60,12 @@ class VaultOpenService {
       masterKey32: masterKey32,
       outputFile: outputFile,
     );
+  }
+
+  /// Decrypt a file to bytes (used by encrypted export service)
+  Future<List<int>> decryptToBytes(VaultFile file) async {
+    final tempFile = await decryptToCachedTempFile(file);
+    return await tempFile.readAsBytes();
   }
 
   static String _safeFilename(String name) {

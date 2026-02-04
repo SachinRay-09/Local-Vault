@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.2.1+1
 
 environment:
-  sdk: ^3.10.8
+  sdk: ^3.2.6
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -39,27 +39,27 @@ dependencies:
   isar: ^3.1.0+1
   isar_flutter_libs: ^3.1.0+1
   path_provider: ^2.1.1
-  flutter_secure_storage: ^9.0.0
-  encrypt: ^5.0.3
-  file_picker: ^6.1.1
+  flutter_secure_storage: ^8.0.0
+  encrypt: ^5.0.1
+  file_picker: ^5.5.0
   archive: ^3.4.9
-  crypto: ^3.0.7
-  pointycastle: ^3.9.1
-  video_player: ^2.9.5
-  path: ^1.9.0
+  crypto: ^3.0.3
+  pointycastle: ^3.7.3
+  video_player: ^2.8.1
+  path: ^1.8.3
 
   # Android-specific dependencies
-  permission_handler: ^11.0.1
-  share_plus: ^7.2.1
+  permission_handler: ^10.4.5
+  share_plus: ^7.1.0
   url_launcher: ^6.2.1
-  device_info_plus: ^9.1.1
-  package_info_plus: ^4.2.0
+  device_info_plus: ^9.0.3
+  package_info_plus: ^4.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  build_runner: ^2.4.13
+  build_runner: ^2.4.9
   isar_generator: ^3.1.0+1
 
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -67,8 +67,8 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^6.0.0
-  msix: ^3.16.13
+  flutter_lints: ^3.0.0
+  msix: ^3.10.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
