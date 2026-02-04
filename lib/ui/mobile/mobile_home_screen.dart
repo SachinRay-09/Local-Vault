@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
 
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
@@ -412,6 +413,209 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
+  void _showFolderOptions(VaultFolder folder) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.auto_stories),
+              title: const Text('Open in Mihon'),
+              subtitle: const Text('Create temp folder for manga reading'),
+              onTap: () {
+                Navigator.pop(context);
+                _openFolderInMihon(folder);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.select_all),
+              title: Text(_selectedFolderIds.contains(folder.id) ? 'Deselect' : 'Select'),
+              onTap: () {
+                Navigator.pop(context);
+                _toggleFolderSelection(folder);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete Folder'),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteFolder(folder);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Open folder in Mihon manga reader
+  Future<void> _openFolderInMihon(VaultFolder folder) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Preparing "${folder.name}" for Mihon...')),
+      );
+
+      final result = await _androidManga.openInMangaReader(folder);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      
+      if (result.success) {
+        _showMihonSuccessDialog(folder.name, result.tempFolderPath, result.mihonDetected, result.mihonAppName);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to open in Mihon: ${result.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to open in Mihon: $e')),
+      );
+    }
+  }
+
+  void _showMihonSuccessDialog(String folderName, String tempPath, bool mihonDetected, String? mihonAppName) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              mihonDetected ? Icons.check_circle : Icons.info,
+              color: mihonDetected ? Colors.green : Colors.blue,
+            ),
+            const SizedBox(width: 8),
+            Text(mihonDetected ? 'Mihon Launched' : 'Temp Folder Created'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              mihonDetected 
+                  ? 'Successfully opened "$folderName" in ${mihonAppName ?? 'Mihon'}!'
+                  : 'Images exported for "$folderName"',
+            ),
+            const SizedBox(height: 16),
+            const Text('Temp folder location:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
+              ),
+              child: SelectableText(
+                tempPath,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (!mihonDetected) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Theme.of(context).colorScheme.primary),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('📱 Next Steps:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8),
+                    Text('1. Install Mihon from GitHub or F-Droid'),
+                    Text('2. Open Mihon and navigate to the temp folder above'),
+                    Text('3. Or use any manga reader app to open the folder'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            const Text(
+              '🔒 Security: Tap "Clean Up" when done reading to remove temp files.',
+              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Keep Reading'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              
+              // Clean up temp folder
+              final success = await _androidManga.cleanupMangaReaderTemp(tempPath);
+              
+              if (mounted) {
+                navigator.pop();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(success 
+                        ? 'Temp folder cleaned up successfully!' 
+                        : 'Failed to clean up temp folder'),
+                    backgroundColor: success ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Clean Up'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteFolder(VaultFolder folder) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Folder'),
+        content: Text('Delete "${folder.name}" and all its contents?\n\nThis action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      try {
+        await _repo.deleteFolderRecursive(folderId: folder.id);
+        await _refresh();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Deleted "${folder.name}"')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete folder: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteFile(VaultFile file) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -525,44 +729,68 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     }
   }
 
-  /// Import folder (mobile version)
+  /// Import folder (mobile version) - Enhanced to import entire folders with all content
   Future<void> _importFolder() async {
     try {
-      // Use file picker to select folder on mobile
+      // Show instruction dialog first
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Import Folder'),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('To import an entire folder with all its content:'),
+              SizedBox(height: 12),
+              Text('1. Navigate to the folder you want to import'),
+              Text('2. Select ALL files in that folder (use Ctrl+A or select all)'),
+              Text('3. The app will organize them into a folder structure'),
+              SizedBox(height: 12),
+              Text(
+                'Note: This will import all selected files and organize them by their folder structure.',
+                style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldProceed != true) return;
+
+      // Use file picker to select multiple files from folder
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         allowMultiple: true,
+        dialogTitle: 'Select ALL files from the folder you want to import',
       );
       
       if (result == null || result.files.isEmpty) return;
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Importing files...')),
+      
+      // Show progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _FolderImportProgressDialog(
+          files: result.files,
+          repo: _repo,
+          currentFolderId: _currentFolderId,
+          onComplete: () {
+            Navigator.pop(context);
+            _refresh();
+          },
+        ),
       );
 
-      int imported = 0;
-      for (final file in result.files) {
-        try {
-          await _repo.addMedia(
-            originalName: file.name,
-            parentFolderId: _currentFolderId,
-            sourcePath: file.path,
-            bytes: file.bytes,
-            mimeType: file.extension,
-          );
-          imported++;
-        } catch (e) {
-          debugPrint('Failed to import ${file.name}: $e');
-        }
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $imported files')),
-      );
-      await _refresh();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1170,6 +1398,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 folder.name,
                                 style: const TextStyle(fontSize: 14),
                               ),
+                              trailing: _selectionMode 
+                                  ? null 
+                                  : IconButton(
+                                      icon: const Icon(Icons.more_vert, size: 16),
+                                      onPressed: () => _showFolderOptions(folder),
+                                    ),
                               onTap: _selectionMode 
                                   ? () => _toggleFolderSelection(folder)
                                   : () => _openFolder(folder),
@@ -1406,6 +1640,160 @@ class _EncryptedImportProgressScreenState extends State<_EncryptedImportProgress
           ),
         ),
       ),
+    );
+  }
+}
+// Folder import progress dialog for mobile
+class _FolderImportProgressDialog extends StatefulWidget {
+  final List<PlatformFile> files;
+  final VaultRepository repo;
+  final int? currentFolderId;
+  final VoidCallback onComplete;
+
+  const _FolderImportProgressDialog({
+    required this.files,
+    required this.repo,
+    required this.currentFolderId,
+    required this.onComplete,
+  });
+
+  @override
+  State<_FolderImportProgressDialog> createState() => _FolderImportProgressDialogState();
+}
+
+class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog> {
+  String _status = 'Starting import...';
+  int _processed = 0;
+  int _imported = 0;
+  bool _isComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _performImport();
+  }
+
+  Future<void> _performImport() async {
+    try {
+      final totalFiles = widget.files.length;
+      setState(() => _status = 'Analyzing $totalFiles files...');
+
+      // Group files by their directory structure
+      final Map<String, List<PlatformFile>> folderGroups = {};
+      
+      for (final file in widget.files) {
+        // Extract folder name from file path or use a default
+        String folderName = 'Imported_Folder';
+        
+        if (file.path != null) {
+          final pathParts = file.path!.split(Platform.pathSeparator);
+          if (pathParts.length > 1) {
+            // Use the parent directory name
+            folderName = pathParts[pathParts.length - 2];
+          }
+        }
+        
+        folderGroups.putIfAbsent(folderName, () => []).add(file);
+      }
+
+      setState(() => _status = 'Creating folder structure...');
+
+      // Create folders and import files
+      for (final entry in folderGroups.entries) {
+        final folderName = entry.key;
+        final files = entry.value;
+
+        // Create folder for this group
+        final folder = await widget.repo.createFolder(
+          name: folderName,
+          parentId: widget.currentFolderId,
+        );
+
+        setState(() => _status = 'Importing files to "$folderName"...');
+
+        // Import files to this folder
+        for (final file in files) {
+          try {
+            await widget.repo.addMedia(
+              originalName: file.name,
+              parentFolderId: folder.id,
+              sourcePath: file.path,
+              bytes: file.bytes,
+              mimeType: file.extension,
+            );
+            _imported++;
+          } catch (e) {
+            debugPrint('Failed to import ${file.name}: $e');
+          }
+          
+          _processed++;
+          setState(() => _status = 'Imported ${file.name} ($_processed/$totalFiles)');
+          
+          // Small delay to show progress
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+
+      setState(() {
+        _status = 'Import completed! Imported $_imported files into ${folderGroups.length} folders.';
+        _isComplete = true;
+      });
+
+      // Show success message in the dialog itself, no need for snackbar
+      await Future.delayed(const Duration(seconds: 1));
+      
+      if (mounted) {
+        widget.onComplete();
+      }
+
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _status = 'Import failed: $e';
+          _isComplete = true;
+        });
+        
+        await Future.delayed(const Duration(seconds: 2));
+        
+        // Don't show snackbar to avoid BuildContext issues
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Importing Folder'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_isComplete) const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            _status,
+            textAlign: TextAlign.center,
+          ),
+          if (_processed > 0) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: _processed / widget.files.length,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$_processed / ${widget.files.length} files processed',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+      actions: _isComplete
+          ? [
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Done'),
+              ),
+            ]
+          : null,
     );
   }
 }
