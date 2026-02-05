@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
 import 'vault_open_service.dart';
+import 'vault_paths.dart';
 import 'vault_repository.dart';
 
 class YomikiruNotFoundException implements Exception {
@@ -95,6 +96,19 @@ class YomikiruIntegrationService {
   /// Clean up specific temp folder (for manual cleanup)
   Future<void> cleanupTempFolder(String tempFolderPath) async {
     await _cleanupTempFolder(tempFolderPath);
+    
+    // Also cleanup vault temp files that may have been created during decryption
+    try {
+      final vaultTempDir = await VaultPaths.tempDir();
+      if (await vaultTempDir.exists()) {
+        debugPrint('Cleaning up vault temp folder: ${vaultTempDir.path}');
+        await vaultTempDir.delete(recursive: true);
+        debugPrint('Vault temp folder cleaned up successfully');
+      }
+    } catch (e) {
+      debugPrint('Failed to cleanup vault temp folder: $e');
+      // Don't throw error, just log it
+    }
   }
 
   /// Get all image files in a folder recursively

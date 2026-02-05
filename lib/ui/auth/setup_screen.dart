@@ -98,27 +98,61 @@ class _SetupScreenState extends State<SetupScreen> {
                   const SizedBox(height: 24),
                   const Text('Recovery questions (needed if you forget password):'),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _q1Text,
-                    decoration: const InputDecoration(labelText: 'Question 1'),
-                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
+                  
+                  // Question 1 - Dropdown with predefined questions
+                  DropdownButtonFormField<String>(
+                    value: _q1Text.text.isEmpty ? null : _q1Text.text,
+                    decoration: const InputDecoration(labelText: 'Security Question 1'),
+                    items: const [
+                      DropdownMenuItem(value: 'What is your favorite city?', child: Text('What is your favorite city?')),
+                      DropdownMenuItem(value: 'What is your mother\'s maiden name?', child: Text('What is your mother\'s maiden name?')),
+                      DropdownMenuItem(value: 'What was the name of your first pet?', child: Text('What was the name of your first pet?')),
+                      DropdownMenuItem(value: 'What is your favorite book?', child: Text('What is your favorite book?')),
+                      DropdownMenuItem(value: 'What school did you attend?', child: Text('What school did you attend?')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        _q1Text.text = value;
+                      }
+                    },
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Please select a question' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _q1Answer,
-                    decoration: const InputDecoration(labelText: 'Answer 1'),
+                    decoration: const InputDecoration(
+                      labelText: 'Your Answer 1',
+                      hintText: 'Enter your answer to the question above',
+                    ),
                     validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _q2Text,
-                    decoration: const InputDecoration(labelText: 'Question 2'),
-                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
+                  
+                  // Question 2 - Dropdown with predefined questions
+                  DropdownButtonFormField<String>(
+                    value: _q2Text.text.isEmpty ? null : _q2Text.text,
+                    decoration: const InputDecoration(labelText: 'Security Question 2'),
+                    items: const [
+                      DropdownMenuItem(value: 'What is your nickname at home?', child: Text('What is your nickname at home?')),
+                      DropdownMenuItem(value: 'What is your favorite movie?', child: Text('What is your favorite movie?')),
+                      DropdownMenuItem(value: 'What is your favorite food?', child: Text('What is your favorite food?')),
+                      DropdownMenuItem(value: 'What was your childhood address?', child: Text('What was your childhood address?')),
+                      DropdownMenuItem(value: 'What is your favorite color?', child: Text('What is your favorite color?')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        _q2Text.text = value;
+                      }
+                    },
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Please select a question' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _q2Answer,
-                    decoration: const InputDecoration(labelText: 'Answer 2'),
+                    decoration: const InputDecoration(
+                      labelText: 'Your Answer 2',
+                      hintText: 'Enter your answer to the question above',
+                    ),
                     validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),

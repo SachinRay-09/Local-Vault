@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'dart:io';
+import 'dart:math';
 
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
@@ -10,6 +13,7 @@ import '../../services/encrypted_export_service.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/import_export_service.dart';
+import '../../services/saf_zip_import_service.dart';
 import '../../services/secure_storage_service.dart';
 import '../../services/settings_service.dart';
 import '../../services/vault_open_service.dart';
@@ -799,94 +803,217 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     }
   }
 
-  /// Import ZIP file (supports encrypted .vault files from PC)
+  /// Import ZIP file (supports encrypted .vault files from PC) - Enhanced for Android 15 with SAF
   Future<void> _importZip() async {
     try {
       final messenger = ScaffoldMessenger.of(context);
       
-      // Pick ZIP or vault file
+      // Pick ZIP or vault file with enhanced Android support
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Fixed for Android 15 compatibility
+        type: FileType.any,
         dialogTitle: 'Select ZIP or Vault File',
-        initialDirectory: '/storage/emulated/0/Download',
+        withData: false, // Don't load into memory initially
       );
 
       if (result == null || result.files.isEmpty) return;
 
-      final filePath = result.files.first.path;
-      if (filePath == null) {
-        throw Exception('Invalid file path');
-      }
-
-      final fileName = result.files.first.name.toLowerCase();
+      final pickedFile = result.files.first;
+      final fileName = pickedFile.name.toLowerCase();
       
-      // Check if it's an encrypted vault file
-      if (fileName.endsWith('.vault')) {
-        // Handle encrypted vault import
-        final password = await _showPasswordDialog(
-          title: 'Enter Export Password',
-          message: 'Enter the password you used when exporting from PC:',
-        );
-        if (password == null) return;
+      // Show loading while we prepare the file
+      messenger.showSnackBar(const SnackBar(content: Text('Preparing file...')));
+      
+      try {
+        // Check if it's an encrypted vault file
+        if (fileName.endsWith('.vault')) {
+          // Handle encrypted vault import
+          final password = await _showPasswordDialog(
+            title: 'Enter Export Password',
+            message: 'Enter the password you used when exporting from PC:',
+          );
+          if (password == null) return;
 
-        // Show import progress dialog
-        _showEncryptedImportProgressDialog(filePath, password);
-        return;
-      }
+          // Use file path for .vault files (they work with existing encrypted export service)
+          String? workingFilePath = pickedFile.path;
+          if (workingFilePath == null) {
+            throw Exception('Unable to access the selected vault file');
+          }
 
-      // Handle regular ZIP import
-      if (!mounted) return;
+          _showEncryptedImportProgressDialog(workingFilePath, password);
+          return;
+        }
 
-      final passwordController = TextEditingController();
-      final password = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Import ZIP'),
-          content: TextField(
-            controller: passwordController,
-            decoration: const InputDecoration(labelText: 'ZIP password (if encrypted)'),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, passwordController.text),
-              child: const Text('Import'),
+        // Handle regular ZIP import with SAF for Android 15+ compatibility
+        if (!mounted) return;
+        messenger.hideCurrentSnackBar();
+
+        final passwordController = TextEditingController();
+        final password = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Import ZIP'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Selected file: ${pickedFile.name}'),
+                const SizedBox(height: 8),
+                const Text('Note: Using SAF for Android 15+ compatibility'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(
+                    labelText: 'ZIP password (if encrypted)',
+                    hintText: 'Leave empty if not password protected',
+                  ),
+                  autofocus: true,
+                  obscureText: true,
+                ),
+              ],
             ),
-          ],
-        ),
-      );
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, passwordController.text),
+                child: const Text('Import'),
+              ),
+            ],
+          ),
+        );
 
-      final pw = (password ?? '').trim();
-      if (pw.isEmpty) return;
+        if (password == null) return; // User cancelled
 
-      if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(content: Text('Importing ZIP...')));
+        if (!mounted) return;
+        messenger.showSnackBar(const SnackBar(content: Text('Importing ZIP via SAF...')));
 
-      // Import using import export service
-      final importExport = ImportExportService(
-        repo: _repo,
-        crypto: const FileCryptoService(),
-        secureStorage: SecureStorageService.instance,
-      );
+        try {
+          // Try SAF approach first (Android 15+ compatible)
+          if (Platform.isAndroid && pickedFile.path != null) {
+            // Convert file path to content URI for SAF
+            final fileUri = Uri.file(pickedFile.path!);
+            
+            // Use SAF-compatible import
+            final safImportService = SafZipImportService(repo: _repo);
+            final res = await safImportService.importFromZipUri(
+              zipUri: fileUri,
+              password: password.trim(),
+              destinationFolderId: _currentFolderId,
+              onImportComplete: (result) {
+                // This callback can be used for progress updates
+              },
+            );
+            
+            if (!mounted) return;
+            messenger.hideCurrentSnackBar();
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text('Successfully imported ${res.filesImported} files and ${res.foldersCreated} folders via SAF'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            
+            await _refresh();
+            return;
+          }
+          
+          // Fallback to traditional approach for other platforms or if SAF fails
+          throw Exception('SAF not available, using fallback method');
+          
+        } catch (safError) {
+          debugPrint('SAF import failed, trying fallback: $safError');
+          
+          // Fallback to enhanced file handling approach
+          String? workingFilePath;
+          
+          if (pickedFile.bytes != null && pickedFile.bytes!.isNotEmpty) {
+            // Use bytes if available (most reliable on Android)
+            final appDir = await getApplicationCacheDirectory();
+            final importId = Random().nextInt(999999).toString().padLeft(6, '0');
+            final tempDir = Directory(path.join(appDir.path, 'local_vault_zip_$importId'));
+            await tempDir.create(recursive: true);
+            final tempFile = File(path.join(tempDir.path, pickedFile.name));
+            await tempFile.writeAsBytes(pickedFile.bytes!);
+            workingFilePath = tempFile.path;
+            debugPrint('Using file bytes approach: ${pickedFile.bytes!.length} bytes');
+          } else {
+            final filePath = pickedFile.path;
+            if (filePath != null) {
+              // Try direct path access
+              final sourceFile = File(filePath);
+              if (await sourceFile.exists()) {
+                workingFilePath = filePath;
+                debugPrint('Using direct path approach: $filePath');
+              } else {
+                // Copy to app directory for reliable access
+                final appDir = await getApplicationCacheDirectory();
+                final importId = Random().nextInt(999999).toString().padLeft(6, '0');
+                final tempDir = Directory(path.join(appDir.path, 'local_vault_zip_$importId'));
+                await tempDir.create(recursive: true);
+                final tempFile = File(path.join(tempDir.path, pickedFile.name));
+                
+                // Try to read and copy the file
+                try {
+                  final bytes = await sourceFile.readAsBytes();
+                  await tempFile.writeAsBytes(bytes);
+                  workingFilePath = tempFile.path;
+                  debugPrint('Using copy approach: copied ${bytes.length} bytes');
+                } catch (e) {
+                  debugPrint('Failed to copy file: $e');
+                  throw Exception('Unable to access the selected file. Please try again or select a different file.');
+                }
+              }
+            } else {
+              throw Exception('No file path or data available from picker');
+            }
+          }
 
-      final res = await importExport.importFromZip(
-        zipPath: filePath,
-        password: pw,
-        destinationFolderId: _currentFolderId,
-      );
-      
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text('Imported ${res.filesImported} files, ${res.foldersCreated} folders')),
-      );
-      await _refresh();
+          // Import using traditional import export service
+          final importExport = ImportExportService(
+            repo: _repo,
+            crypto: const FileCryptoService(),
+            secureStorage: SecureStorageService.instance,
+          );
+
+          final res = await importExport.importFromZip(
+            zipPath: workingFilePath,
+            password: password.trim(),
+            destinationFolderId: _currentFolderId,
+          );
+          
+          if (!mounted) return;
+          messenger.hideCurrentSnackBar();
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Successfully imported ${res.filesImported} files and ${res.foldersCreated} folders'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          
+          await _refresh();
+        }
+        
+      } catch (e) {
+        if (!mounted) return;
+        messenger.hideCurrentSnackBar();
+        
+        String errorMessage = SafZipImportService.getSafErrorMessage(e);
+        
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
       
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import failed: $e')),
+        SnackBar(
+          content: Text('Failed to select or import file: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -1711,26 +1838,41 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
 
         setState(() => _status = 'Importing files to "$folderName"...');
 
-        // Import files to this folder
-        for (final file in files) {
-          try {
-            await widget.repo.addMedia(
-              originalName: file.name,
-              parentFolderId: folder.id,
-              sourcePath: file.path,
-              bytes: file.bytes,
-              mimeType: file.extension,
-            );
-            _imported++;
-          } catch (e) {
-            debugPrint('Failed to import ${file.name}: $e');
+        // Process files in smaller batches to prevent UI blocking
+        const batchSize = 2; // Process 2 files at a time
+        for (int i = 0; i < files.length; i += batchSize) {
+          final batch = files.skip(i).take(batchSize).toList();
+          
+          // Process batch
+          for (final file in batch) {
+            try {
+              await widget.repo.addMedia(
+                originalName: file.name,
+                parentFolderId: folder.id,
+                sourcePath: file.path,
+                bytes: file.bytes,
+                mimeType: file.extension,
+              );
+              _imported++;
+            } catch (e) {
+              debugPrint('Failed to import ${file.name}: $e');
+            }
+            
+            _processed++;
+            
+            // Update UI more frequently but not on every file
+            if (_processed % 1 == 0 || _processed == totalFiles) {
+              setState(() => _status = 'Imported ${file.name} ($_processed/$totalFiles)');
+            }
           }
           
-          _processed++;
-          setState(() => _status = 'Imported ${file.name} ($_processed/$totalFiles)');
+          // Yield to UI thread after each batch to prevent blocking
+          await Future.delayed(const Duration(milliseconds: 10));
           
-          // Small delay to show progress
-          await Future.delayed(const Duration(milliseconds: 50));
+          // Allow UI to update
+          if (mounted) {
+            setState(() {});
+          }
         }
       }
 
