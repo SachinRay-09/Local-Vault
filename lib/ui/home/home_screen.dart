@@ -5,6 +5,7 @@ import 'dart:io';
 
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
+import '../../services/app_lifecycle_service.dart';
 import '../../services/bulk_import_service.dart';
 import '../../services/encrypted_export_service.dart';
 import '../../services/file_crypto_service.dart';
@@ -297,6 +298,58 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         await _refresh();
       }
+    }
+  }
+
+  /// Quick clear cache from top bar
+  Future<void> _clearCacheQuick() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Clearing cache...'),
+            ],
+          ),
+        ),
+      );
+
+      // Perform cleanup using the lifecycle service
+      final lifecycleService = AppLifecycleService();
+      await lifecycleService.performManualCleanup();
+
+      if (!mounted) return;
+      
+      // Close loading dialog
+      Navigator.of(context).pop();
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cache cleared successfully! All temporary files removed.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      // Close loading dialog if still open
+      Navigator.of(context).pop();
+      
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error clearing cache: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -1343,6 +1396,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 icon: const Icon(Icons.undo),
               ),
+            IconButton(
+              tooltip: 'Clear Cache',
+              onPressed: _clearCacheQuick,
+              icon: const Icon(Icons.cleaning_services),
+            ),
             IconButton(
               tooltip: 'Search',
               onPressed: _openGlobalSearch,

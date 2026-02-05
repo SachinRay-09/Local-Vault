@@ -311,5 +311,10 @@ class VaultRepository {
       currentId = parent;
     }
   }
+
+  /// Disposes resources (override in subclasses if needed)
+  void dispose() {
+    // Base implementation - override in subclasses
+  }
 }
 

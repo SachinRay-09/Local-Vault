@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../services/app_lifecycle_service.dart';
 import '../../services/settings_service.dart';
-import '../../services/vault_paths.dart';
 import '../auth/auth_gate.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -64,13 +64,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _clearTemp() async {
-    final dir = await VaultPaths.ensureTempDir();
     try {
-      await dir.delete(recursive: true);
-    } catch (_) {}
-    await VaultPaths.ensureTempDir();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Temp cache cleared')));
+      final lifecycleService = AppLifecycleService();
+      await lifecycleService.performManualCleanup();
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All temporary files cleared securely'))
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error clearing temp files: $e'))
+      );
+    }
   }
 
   void _lockVault() {

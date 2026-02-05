@@ -1,375 +1,217 @@
 import 'dart:isolate';
-import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
-/// Isolate-based encryption service for CPU-intensive operations
-/// Moves encryption/decryption off the main thread to prevent UI blocking
+/// Background isolate processing for crypto operations to prevent UI blocking
 class IsolateCryptoService {
-  static const int _defaultChunkSize = 64 * 1024; // 64KB chunks
-
-  /// Encrypt a file using background isolate with chunked processing
-  static Future<void> encryptFileInIsolate({
-    required String sourcePath,
-    required String destPath,
-    required Uint8List key,
-    Function(double progress)? onProgress,
-  }) async {
-    final params = _EncryptionParams(
-      sourcePath: sourcePath,
-      destPath: destPath,
-      key: key,
-      chunkSize: _defaultChunkSize,
-    );
-
-    if (onProgress != null) {
-      // Use isolate with progress reporting
-      await _encryptWithProgress(params, onProgress);
-    } else {
-      // Simple compute for basic encryption
-      await compute(_encryptFileWorker, params);
-    }
-  }
-
-  /// Decrypt a file using background isolate with chunked processing
-  static Future<void> decryptFileInIsolate({
-    required String sourcePath,
-    required String destPath,
-    required Uint8List key,
-    Function(double progress)? onProgress,
-  }) async {
-    final params = _DecryptionParams(
-      sourcePath: sourcePath,
-      destPath: destPath,
-      key: key,
-      chunkSize: _defaultChunkSize,
-    );
-
-    if (onProgress != null) {
-      // Use isolate with progress reporting
-      await _decryptWithProgress(params, onProgress);
-    } else {
-      // Simple compute for basic decryption
-      await compute(_decryptFileWorker, params);
-    }
-  }
-
-  /// Encrypt multiple files in batch using isolate
-  static Future<void> encryptBatchInIsolate({
-    required List<String> sourcePaths,
-    required List<String> destPaths,
-    required Uint8List key,
-    Function(int completed, int total)? onProgress,
-  }) async {
-    final params = _BatchEncryptionParams(
-      sourcePaths: sourcePaths,
-      destPaths: destPaths,
-      key: key,
-      chunkSize: _defaultChunkSize,
-    );
-
-    if (onProgress != null) {
-      await _encryptBatchWithProgress(params, onProgress);
-    } else {
-      await compute(_encryptBatchWorker, params);
-    }
-  }
-
-  /// Encrypt with progress reporting using isolate communication
-  static Future<void> _encryptWithProgress(
-    _EncryptionParams params,
-    Function(double progress) onProgress,
-  ) async {
-    final receivePort = ReceivePort();
-    final isolate = await Isolate.spawn(
-      _encryptFileWithProgressWorker,
-      _IsolateMessage(params, receivePort.sendPort),
-    );
-
-    await for (final message in receivePort) {
-      if (message is double) {
-        onProgress(message);
-      } else if (message is String && message == 'done') {
-        break;
-      } else if (message is String && message.startsWith('error:')) {
-        isolate.kill();
-        receivePort.close();
-        throw Exception(message.substring(6));
-      }
-    }
-
-    isolate.kill();
-    receivePort.close();
-  }
-
-  /// Decrypt with progress reporting using isolate communication
-  static Future<void> _decryptWithProgress(
-    _DecryptionParams params,
-    Function(double progress) onProgress,
-  ) async {
-    final receivePort = ReceivePort();
-    final isolate = await Isolate.spawn(
-      _decryptFileWithProgressWorker,
-      _IsolateMessage(params, receivePort.sendPort),
-    );
-
-    await for (final message in receivePort) {
-      if (message is double) {
-        onProgress(message);
-      } else if (message is String && message == 'done') {
-        break;
-      } else if (message is String && message.startsWith('error:')) {
-        isolate.kill();
-        receivePort.close();
-        throw Exception(message.substring(6));
-      }
-    }
-
-    isolate.kill();
-    receivePort.close();
-  }
-
-  /// Encrypt batch with progress reporting
-  static Future<void> _encryptBatchWithProgress(
-    _BatchEncryptionParams params,
-    Function(int completed, int total) onProgress,
-  ) async {
-    final receivePort = ReceivePort();
-    final isolate = await Isolate.spawn(
-      _encryptBatchWithProgressWorker,
-      _IsolateMessage(params, receivePort.sendPort),
-    );
-
-    await for (final message in receivePort) {
-      if (message is int) {
-        onProgress(message, params.sourcePaths.length);
-      } else if (message is String && message == 'done') {
-        break;
-      } else if (message is String && message.startsWith('error:')) {
-        isolate.kill();
-        receivePort.close();
-        throw Exception(message.substring(6));
-      }
-    }
-
-    isolate.kill();
-    receivePort.close();
-  }
-}
-
-/// Worker function for file encryption (runs in isolate)
-Future<void> _encryptFileWorker(_EncryptionParams params) async {
-  try {
-    final sourceFile = File(params.sourcePath);
-    final destFile = File(params.destPath);
-    
-    // Ensure destination directory exists
-    await destFile.parent.create(recursive: true);
-    
-    final sourceStream = sourceFile.openRead();
-    final destSink = destFile.openWrite();
-    
-    await for (final chunk in sourceStream) {
-      // Simulate encryption (replace with actual encryption logic)
-      final encryptedChunk = _encryptChunk(chunk, params.key);
-      destSink.add(encryptedChunk);
-    }
-    
-    await destSink.close();
-  } catch (e) {
-    debugPrint('Encryption error: $e');
-    rethrow;
-  }
-}
-
-/// Worker function for file decryption (runs in isolate)
-Future<void> _decryptFileWorker(_DecryptionParams params) async {
-  try {
-    final sourceFile = File(params.sourcePath);
-    final destFile = File(params.destPath);
-    
-    // Ensure destination directory exists
-    await destFile.parent.create(recursive: true);
-    
-    final sourceStream = sourceFile.openRead();
-    final destSink = destFile.openWrite();
-    
-    await for (final chunk in sourceStream) {
-      // Simulate decryption (replace with actual decryption logic)
-      final decryptedChunk = _decryptChunk(chunk, params.key);
-      destSink.add(decryptedChunk);
-    }
-    
-    await destSink.close();
-  } catch (e) {
-    debugPrint('Decryption error: $e');
-    rethrow;
-  }
-}
-
-/// Worker function for batch encryption (runs in isolate)
-Future<void> _encryptBatchWorker(_BatchEncryptionParams params) async {
-  for (int i = 0; i < params.sourcePaths.length; i++) {
-    final encryptParams = _EncryptionParams(
-      sourcePath: params.sourcePaths[i],
-      destPath: params.destPaths[i],
-      key: params.key,
-      chunkSize: params.chunkSize,
-    );
-    await _encryptFileWorker(encryptParams);
-  }
-}
-
-/// Worker with progress reporting for encryption
-void _encryptFileWithProgressWorker(_IsolateMessage message) async {
-  final params = message.params as _EncryptionParams;
-  final sendPort = message.sendPort;
+  static const int _maxConcurrentIsolates = 2; // Limit concurrent isolates
+  static int _activeIsolates = 0;
   
-  try {
-    final sourceFile = File(params.sourcePath);
-    final destFile = File(params.destPath);
-    final fileSize = await sourceFile.length();
+  /// Process multiple files in background isolate to prevent UI blocking
+  static Future<List<IsolateProcessResult>> processFilesInBackground({
+    required List<IsolateProcessTask> tasks,
+    Function(double)? onProgress,
+  }) async {
+    if (tasks.isEmpty) return [];
     
-    await destFile.parent.create(recursive: true);
+    final results = <IsolateProcessResult>[];
+    final batches = _createBatches(tasks, _maxConcurrentIsolates);
     
-    final sourceStream = sourceFile.openRead();
-    final destSink = destFile.openWrite();
-    
-    int bytesProcessed = 0;
-    
-    await for (final chunk in sourceStream) {
-      final encryptedChunk = _encryptChunk(chunk, params.key);
-      destSink.add(encryptedChunk);
+    for (int batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      final batch = batches[batchIndex];
+      final batchResults = await _processBatch(batch);
+      results.addAll(batchResults);
       
-      bytesProcessed += chunk.length;
-      final progress = bytesProcessed / fileSize;
-      sendPort.send(progress);
-    }
-    
-    await destSink.close();
-    sendPort.send('done');
-  } catch (e) {
-    sendPort.send('error: $e');
-  }
-}
-
-/// Worker with progress reporting for decryption
-void _decryptFileWithProgressWorker(_IsolateMessage message) async {
-  final params = message.params as _DecryptionParams;
-  final sendPort = message.sendPort;
-  
-  try {
-    final sourceFile = File(params.sourcePath);
-    final destFile = File(params.destPath);
-    final fileSize = await sourceFile.length();
-    
-    await destFile.parent.create(recursive: true);
-    
-    final sourceStream = sourceFile.openRead();
-    final destSink = destFile.openWrite();
-    
-    int bytesProcessed = 0;
-    
-    await for (final chunk in sourceStream) {
-      final decryptedChunk = _decryptChunk(chunk, params.key);
-      destSink.add(decryptedChunk);
+      // Update progress
+      final progress = (batchIndex + 1) / batches.length;
+      onProgress?.call(progress);
       
-      bytesProcessed += chunk.length;
-      final progress = bytesProcessed / fileSize;
-      sendPort.send(progress);
+      // Yield to UI thread between batches
+      await Future.delayed(const Duration(milliseconds: 10));
     }
     
-    await destSink.close();
-    sendPort.send('done');
-  } catch (e) {
-    sendPort.send('error: $e');
+    return results;
   }
-}
-
-/// Worker with progress reporting for batch encryption
-void _encryptBatchWithProgressWorker(_IsolateMessage message) async {
-  final params = message.params as _BatchEncryptionParams;
-  final sendPort = message.sendPort;
   
-  try {
-    for (int i = 0; i < params.sourcePaths.length; i++) {
-      final encryptParams = _EncryptionParams(
-        sourcePath: params.sourcePaths[i],
-        destPath: params.destPaths[i],
-        key: params.key,
-        chunkSize: params.chunkSize,
+  /// Create batches for processing
+  static List<List<IsolateProcessTask>> _createBatches(
+    List<IsolateProcessTask> tasks, 
+    int maxBatchSize,
+  ) {
+    final batches = <List<IsolateProcessTask>>[];
+    for (int i = 0; i < tasks.length; i += maxBatchSize) {
+      final end = (i + maxBatchSize < tasks.length) ? i + maxBatchSize : tasks.length;
+      batches.add(tasks.sublist(i, end));
+    }
+    return batches;
+  }
+  
+  /// Process a batch of tasks in parallel isolates
+  static Future<List<IsolateProcessResult>> _processBatch(
+    List<IsolateProcessTask> batch,
+  ) async {
+    final futures = batch.map((task) => _processTaskInIsolate(task)).toList();
+    return await Future.wait(futures);
+  }
+  
+  /// Process single task in isolate
+  static Future<IsolateProcessResult> _processTaskInIsolate(
+    IsolateProcessTask task,
+  ) async {
+    if (_activeIsolates >= _maxConcurrentIsolates) {
+      // If too many isolates, process in current thread
+      return _processTaskDirectly(task);
+    }
+    
+    try {
+      _activeIsolates++;
+      
+      final receivePort = ReceivePort();
+      final isolate = await Isolate.spawn(
+        _isolateEntryPoint,
+        IsolateMessage(
+          task: task,
+          sendPort: receivePort.sendPort,
+        ),
       );
-      await _encryptFileWorker(encryptParams);
-      sendPort.send(i + 1); // Send completed count
+      
+      final result = await receivePort.first as IsolateProcessResult;
+      isolate.kill();
+      
+      return result;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Isolate processing failed, falling back to direct: $e');
+      }
+      return _processTaskDirectly(task);
+    } finally {
+      _activeIsolates--;
     }
-    sendPort.send('done');
-  } catch (e) {
-    sendPort.send('error: $e');
+  }
+  
+  /// Isolate entry point
+  static void _isolateEntryPoint(IsolateMessage message) {
+    try {
+      final result = _processTaskDirectly(message.task);
+      message.sendPort.send(result);
+    } catch (e) {
+      message.sendPort.send(IsolateProcessResult(
+        taskId: message.task.taskId,
+        success: false,
+        error: e.toString(),
+      ));
+    }
+  }
+  
+  /// Process task directly (fallback or for simple operations)
+  static IsolateProcessResult _processTaskDirectly(IsolateProcessTask task) {
+    try {
+      switch (task.operation) {
+        case IsolateOperation.encrypt:
+          return _performEncryption(task);
+        case IsolateOperation.decrypt:
+          return _performDecryption(task);
+        case IsolateOperation.hash:
+          return _performHashing(task);
+        case IsolateOperation.compress:
+          return _performCompression(task);
+      }
+    } catch (e) {
+      return IsolateProcessResult(
+        taskId: task.taskId,
+        success: false,
+        error: e.toString(),
+      );
+    }
+  }
+  
+  /// Perform encryption operation
+  static IsolateProcessResult _performEncryption(IsolateProcessTask task) {
+    // Placeholder for encryption logic
+    // In real implementation, this would use the actual crypto operations
+    return IsolateProcessResult(
+      taskId: task.taskId,
+      success: true,
+      data: task.inputData, // Placeholder
+    );
+  }
+  
+  /// Perform decryption operation
+  static IsolateProcessResult _performDecryption(IsolateProcessTask task) {
+    // Placeholder for decryption logic
+    return IsolateProcessResult(
+      taskId: task.taskId,
+      success: true,
+      data: task.inputData, // Placeholder
+    );
+  }
+  
+  /// Perform hashing operation
+  static IsolateProcessResult _performHashing(IsolateProcessTask task) {
+    // Placeholder for hashing logic
+    return IsolateProcessResult(
+      taskId: task.taskId,
+      success: true,
+      data: Uint8List(32), // Placeholder hash
+    );
+  }
+  
+  /// Perform compression operation
+  static IsolateProcessResult _performCompression(IsolateProcessTask task) {
+    // Placeholder for compression logic
+    return IsolateProcessResult(
+      taskId: task.taskId,
+      success: true,
+      data: task.inputData, // Placeholder
+    );
   }
 }
 
-/// Placeholder encryption function (replace with actual AES encryption)
-Uint8List _encryptChunk(List<int> chunk, Uint8List key) {
-  // TODO: Replace with actual AES-256 encryption
-  // For now, just return the chunk as-is to test isolate performance
-  return Uint8List.fromList(chunk);
+/// Operations that can be performed in isolates
+enum IsolateOperation {
+  encrypt,
+  decrypt,
+  hash,
+  compress,
 }
 
-/// Placeholder decryption function (replace with actual AES decryption)
-Uint8List _decryptChunk(List<int> chunk, Uint8List key) {
-  // TODO: Replace with actual AES-256 decryption
-  // For now, just return the chunk as-is to test isolate performance
-  return Uint8List.fromList(chunk);
-}
-
-/// Parameters for encryption operations
-class _EncryptionParams {
-  final String sourcePath;
-  final String destPath;
-  final Uint8List key;
-  final int chunkSize;
-
-  _EncryptionParams({
-    required this.sourcePath,
-    required this.destPath,
-    required this.key,
-    required this.chunkSize,
+/// Task to be processed in isolate
+class IsolateProcessTask {
+  final String taskId;
+  final IsolateOperation operation;
+  final Uint8List inputData;
+  final Map<String, dynamic> parameters;
+  
+  IsolateProcessTask({
+    required this.taskId,
+    required this.operation,
+    required this.inputData,
+    this.parameters = const {},
   });
 }
 
-/// Parameters for decryption operations
-class _DecryptionParams {
-  final String sourcePath;
-  final String destPath;
-  final Uint8List key;
-  final int chunkSize;
-
-  _DecryptionParams({
-    required this.sourcePath,
-    required this.destPath,
-    required this.key,
-    required this.chunkSize,
+/// Result from isolate processing
+class IsolateProcessResult {
+  final String taskId;
+  final bool success;
+  final Uint8List? data;
+  final String? error;
+  
+  IsolateProcessResult({
+    required this.taskId,
+    required this.success,
+    this.data,
+    this.error,
   });
 }
 
-/// Parameters for batch encryption operations
-class _BatchEncryptionParams {
-  final List<String> sourcePaths;
-  final List<String> destPaths;
-  final Uint8List key;
-  final int chunkSize;
-
-  _BatchEncryptionParams({
-    required this.sourcePaths,
-    required this.destPaths,
-    required this.key,
-    required this.chunkSize,
-  });
-}
-
-/// Message wrapper for isolate communication
-class _IsolateMessage {
-  final dynamic params;
+/// Message passed to isolate
+class IsolateMessage {
+  final IsolateProcessTask task;
   final SendPort sendPort;
-
-  _IsolateMessage(this.params, this.sendPort);
+  
+  IsolateMessage({
+    required this.task,
+    required this.sendPort,
+  });
 }

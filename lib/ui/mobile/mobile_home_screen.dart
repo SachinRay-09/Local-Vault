@@ -9,13 +9,15 @@ import 'dart:math';
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/android_manga_service.dart';
+import '../../services/app_lifecycle_service.dart';
 import '../../services/encrypted_export_service.dart';
+import '../../services/enhanced_vault_repository.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
-import '../../services/import_export_service.dart';
 import '../../services/saf_zip_import_service.dart';
 import '../../services/secure_storage_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/unified_import_service.dart';
 import '../../services/vault_open_service.dart';
 import '../../services/vault_repository.dart';
 import '../../utils/vault_format.dart';
@@ -33,7 +35,8 @@ class MobileHomeScreen extends StatefulWidget {
 }
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> {
-  final VaultRepository _repo = VaultRepository(
+  // Use Enhanced Repository with new folder encryption features
+  final EnhancedVaultRepository _repo = EnhancedVaultRepository(
     crypto: const FileCryptoService(),
     secureStorage: SecureStorageService.instance,
   );
@@ -45,6 +48,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   );
 
   late final SettingsService _settingsService = SettingsService();
+
+  // Use Unified Import Service with smart encryption strategy
+  late final UnifiedImportService _unifiedImport = UnifiedImportService(
+    enhancedRepo: _repo,
+  );
 
   late final AndroidMangaService _androidManga = AndroidMangaService(
     repo: _repo,
@@ -656,6 +664,60 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     }
   }
 
+  // Utility methods
+  
+  /// Quick clear cache from top bar
+  Future<void> _clearCacheQuick() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Clearing cache...'),
+            ],
+          ),
+        ),
+      );
+
+      // Perform cleanup using the lifecycle service
+      final lifecycleService = AppLifecycleService();
+      await lifecycleService.performManualCleanup();
+
+      if (!mounted) return;
+      
+      // Close loading dialog
+      Navigator.of(context).pop();
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cache cleared successfully! All temporary files removed.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      // Close loading dialog if still open
+      Navigator.of(context).pop();
+      
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error clearing cache: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // Import methods - Mobile implementations
   
   /// Add new folder
@@ -784,9 +846,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _FolderImportProgressDialog(
+        builder: (context) => _EnhancedFolderImportDialog(
           files: result.files,
-          repo: _repo,
+          enhancedRepo: _repo,
           currentFolderId: _currentFolderId,
           onComplete: () {
             Navigator.pop(context);
@@ -967,27 +1029,37 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             }
           }
 
-          // Import using traditional import export service
-          final importExport = ImportExportService(
-            repo: _repo,
-            crypto: const FileCryptoService(),
-            secureStorage: SecureStorageService.instance,
-          );
-
-          final res = await importExport.importFromZip(
+          // Import using new Unified Import Service with smart encryption strategy
+          final result = await _unifiedImport.importZip(
             zipPath: workingFilePath,
             password: password.trim(),
             destinationFolderId: _currentFolderId,
+            onProgress: (progress) {
+              // Could add progress indicator here if needed
+            },
+            onStatusUpdate: (status) {
+              // Could show status updates here if needed
+            },
           );
           
           if (!mounted) return;
           messenger.hideCurrentSnackBar();
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text('Successfully imported ${res.filesImported} files and ${res.foldersCreated} folders'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          
+          if (result.success) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text('Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders using ${result.strategy}'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } else {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text('Import failed: ${result.error}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
           
           await _refresh();
         }
@@ -1344,6 +1416,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               ),
             ] else ...[
               // Top bar buttons for common actions
+              IconButton(
+                icon: const Icon(Icons.cleaning_services),
+                onPressed: _clearCacheQuick,
+                tooltip: 'Clear Cache',
+              ),
               IconButton(
                 icon: const Icon(Icons.create_new_folder),
                 onPressed: _addFolder,
@@ -1936,6 +2013,160 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
               ),
             ]
           : null,
+    );
+  }
+}
+
+// Enhanced folder import dialog using new smart encryption strategy
+class _EnhancedFolderImportDialog extends StatefulWidget {
+  final List<PlatformFile> files;
+  final EnhancedVaultRepository enhancedRepo;
+  final int? currentFolderId;
+  final VoidCallback onComplete;
+
+  const _EnhancedFolderImportDialog({
+    required this.files,
+    required this.enhancedRepo,
+    required this.currentFolderId,
+    required this.onComplete,
+  });
+
+  @override
+  State<_EnhancedFolderImportDialog> createState() => _EnhancedFolderImportDialogState();
+}
+
+class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog> {
+  String _status = 'Analyzing files for optimal encryption strategy...';
+  String _strategy = '';
+  double _progress = 0.0;
+  int _filesImported = 0;
+  int _foldersCreated = 0;
+  bool _isComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _performEnhancedImport();
+  }
+
+  Future<void> _performEnhancedImport() async {
+    try {
+      final totalFiles = widget.files.length;
+      setState(() => _status = 'Preparing $totalFiles files for smart import...');
+
+      // Convert PlatformFile to File objects
+      final sourceFiles = <File>[];
+      for (final platformFile in widget.files) {
+        if (platformFile.path != null) {
+          sourceFiles.add(File(platformFile.path!));
+        }
+      }
+
+      if (sourceFiles.isEmpty) {
+        throw Exception('No valid files found to import');
+      }
+
+      // Determine folder name from file paths
+      String folderName = 'Imported_Folder';
+      if (sourceFiles.isNotEmpty && sourceFiles.first.path.isNotEmpty) {
+        final pathParts = sourceFiles.first.path.split(Platform.pathSeparator);
+        if (pathParts.length > 1) {
+          folderName = pathParts[pathParts.length - 2];
+        }
+      }
+
+      setState(() {
+        _status = 'Using smart encryption strategy...';
+        _strategy = 'Analyzing file types and count for optimal performance';
+      });
+
+      // Use enhanced repository's smart bulk import
+      final result = await widget.enhancedRepo.addMultipleMedia(
+        sourceFiles: sourceFiles,
+        parentFolderId: widget.currentFolderId,
+        folderName: folderName,
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+            });
+          }
+        },
+        onStatusUpdate: (status) {
+          if (mounted) {
+            setState(() {
+              _status = status;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _filesImported = result.filesImported ?? 0;
+          _foldersCreated = result.foldersCreated ?? 0;
+          _strategy = result.strategy ?? 'Unknown';
+          _status = result.success 
+              ? 'Import completed successfully!' 
+              : 'Import failed: ${result.error}';
+        });
+      }
+
+      // Auto-close after 2 seconds if successful
+      if (result.success) {
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          widget.onComplete();
+        }
+      }
+
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _status = 'Import failed: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Smart Folder Import'),
+      content: SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_status),
+            const SizedBox(height: 16),
+            if (_strategy.isNotEmpty) ...[
+              Text('Strategy: $_strategy', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 8),
+            ],
+            if (!_isComplete) ...[
+              LinearProgressIndicator(value: _progress),
+              const SizedBox(height: 8),
+              Text('${(_progress * 100).toInt()}%'),
+            ],
+            if (_isComplete && _filesImported > 0) ...[
+              const SizedBox(height: 8),
+              Text('Files imported: $_filesImported'),
+              Text('Folders created: $_foldersCreated'),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (_isComplete)
+          TextButton(
+            onPressed: widget.onComplete,
+            child: const Text('Close'),
+          ),
+      ],
     );
   }
 }
