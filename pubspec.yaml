@@ -123,4 +123,4 @@ msix_config:
   msix_version: 1.2.1.0
   description: Secure encrypted file storage and manga reading app
   # logo_path: assets/icon.png  # Optional - add if you have an icon
-  capabilities: 'internetClient,removableStorage,documentsLibrary,picturesLibrary'
+  capabilities: 'removableStorage,documentsLibrary,picturesLibrary'

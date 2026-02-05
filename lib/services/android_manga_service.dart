@@ -321,6 +321,15 @@ class AndroidMangaService {
         isRecommended: false,
       ));
       
+      // Mihon local folder (new option)
+      const mihonLocalPath = '/storage/emulated/0/Mihon/local';
+      options.add(TempFolderOption(
+        name: 'Mihon/local/',
+        path: mihonLocalPath,
+        description: 'Mihon local folder for direct access',
+        isRecommended: false,
+      ));
+      
       // Root storage location
       const rootPath = '/storage/emulated/0/LocalVault';
       options.add(TempFolderOption(
