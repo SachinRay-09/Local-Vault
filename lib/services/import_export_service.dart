@@ -59,14 +59,19 @@ class ImportExportService {
     return result.files.single.path;
   }
 
-  Future<ExportAllResult> exportAllToZip({required String outputZipPath}) async {
-    final password = _randomExportPassword();
+  Future<ExportAllResult> exportAllToZip({
+    required String outputZipPath,
+    bool usePassword = true,
+  }) async {
+    final password = usePassword ? _randomExportPassword() : '';
 
     final staging = await Directory.systemTemp.createTemp('local_vault_export_');
     try {
       await _writeStagingFromDb(staging);
 
-      final encoder = ZipFileEncoder(password: password);
+      final encoder = usePassword 
+          ? ZipFileEncoder(password: password)
+          : ZipFileEncoder();
       encoder.create(outputZipPath);
       await encoder.addDirectory(staging, includeDirName: false);
       await encoder.close();
@@ -101,6 +106,7 @@ class ImportExportService {
   }
 
   /// Completely robust ZIP extraction with proper file system handling
+  /// Uses streaming for memory efficiency with large files
   Future<void> _extractZipManually(String zipPath, String extractPath, String password) async {
     try {
       debugPrint('Starting robust ZIP extraction from: $zipPath');
@@ -111,7 +117,7 @@ class ImportExportService {
         throw Exception('ZIP file not found at path: $zipPath');
       }
 
-      // Read the ZIP file bytes with size check
+      // Check file size
       final fileSize = await zipFile.length();
       debugPrint('ZIP file size: $fileSize bytes');
       
@@ -119,10 +125,14 @@ class ImportExportService {
         throw Exception('ZIP file is empty');
       }
       
-      if (fileSize > 500 * 1024 * 1024) { // 500MB limit
-        throw Exception('ZIP file is too large (${(fileSize / (1024 * 1024)).toStringAsFixed(1)} MB). Maximum supported size is 500 MB.');
+      // Use streaming for files > 100MB
+      if (fileSize > 100 * 1024 * 1024) {
+        debugPrint('Using streaming extraction for large file');
+        await _extractZipStreaming(zipPath, extractPath, password);
+        return;
       }
 
+      // For smaller files, use memory-based extraction (faster)
       final bytes = await zipFile.readAsBytes();
       if (bytes.isEmpty) {
         throw Exception('ZIP file could not be read or is empty');
@@ -276,6 +286,79 @@ class ImportExportService {
         debugPrint('Failed to cleanup extraction directory: $cleanupError');
       }
       rethrow;
+    }
+  }
+
+  /// Streaming ZIP extraction for large files (memory-efficient)
+  Future<void> _extractZipStreaming(String zipPath, String extractPath, String password) async {
+    try {
+      debugPrint('Using streaming extraction for large ZIP file');
+      
+      // Use InputFileStream for memory-efficient extraction
+      final inputStream = InputFileStream(zipPath);
+      
+      Archive archive;
+      try {
+        if (password.isNotEmpty) {
+          archive = ZipDecoder().decodeBuffer(inputStream, password: password, verify: true);
+        } else {
+          archive = ZipDecoder().decodeBuffer(inputStream);
+        }
+      } catch (e) {
+        await inputStream.close();
+        if (e.toString().toLowerCase().contains('password')) {
+          throw Exception('Incorrect password for ZIP file');
+        }
+        throw Exception('Failed to decode ZIP: $e');
+      } finally {
+        await inputStream.close();
+      }
+
+      if (archive.isEmpty) {
+        throw Exception('ZIP archive is empty');
+      }
+
+      debugPrint('ZIP contains ${archive.length} entries (streaming mode)');
+
+      final extractDir = Directory(extractPath);
+      await extractDir.create(recursive: true);
+
+      int extractedCount = 0;
+      for (final entry in archive) {
+        if (entry.isFile && entry.content != null) {
+          try {
+            final filePath = path.join(extractPath, entry.name);
+            final outputFile = File(filePath);
+            
+            await outputFile.parent.create(recursive: true);
+            
+            final content = entry.content as List<int>;
+            await outputFile.writeAsBytes(content, flush: true);
+            
+            if (await outputFile.exists()) {
+              extractedCount++;
+            }
+            
+            // Clear entry from memory
+            entry.clear();
+            
+          } catch (e) {
+            debugPrint('Failed to extract ${entry.name}: $e');
+          }
+        }
+      }
+
+      // Clear archive from memory
+      archive.clear();
+
+      if (extractedCount == 0) {
+        throw Exception('No files were successfully extracted');
+      }
+
+      debugPrint('Streaming extraction completed: $extractedCount files');
+      
+    } catch (e) {
+      throw Exception('Streaming ZIP extraction failed: $e');
     }
   }
 

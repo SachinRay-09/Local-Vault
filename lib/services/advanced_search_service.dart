@@ -3,7 +3,7 @@ import '../models/vault_folder.dart';
 import 'vault_repository.dart';
 
 enum SearchType { all, files, folders }
-enum SortBy { name, date, size, relevance }
+enum SortBy { name, date, size, relevance, fileOrder }  // Added fileOrder
 enum SortOrder { ascending, descending }
 
 class SearchFilter {
@@ -179,6 +179,9 @@ class AdvancedSearchService {
         case SortBy.size:
           comparison = 0; // Folders don't have size
           break;
+        case SortBy.fileOrder:
+          comparison = a.name.toLowerCase().compareTo(b.name.toLowerCase()); // Folders use name
+          break;
         case SortBy.relevance:
           comparison = a.name.toLowerCase().compareTo(b.name.toLowerCase());
           break;
@@ -199,6 +202,9 @@ class AdvancedSearchService {
           break;
         case SortBy.size:
           comparison = a.byteSize.compareTo(b.byteSize);
+          break;
+        case SortBy.fileOrder:
+          comparison = a.sortOrder.compareTo(b.sortOrder);  // Sort by original file system order
           break;
         case SortBy.relevance:
           comparison = a.originalName.toLowerCase().compareTo(b.originalName.toLowerCase());

@@ -244,7 +244,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     if (q.isNotEmpty) {
       items = items.where((f) => f.name.toLowerCase().contains(q)).toList();
     }
-    items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    // No sorting - preserve original order from database
     return items;
   }
 
@@ -254,7 +254,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     if (q.isNotEmpty) {
       items = items.where((f) => f.originalName.toLowerCase().contains(q)).toList();
     }
-    items.sort((a, b) => a.originalName.toLowerCase().compareTo(b.originalName.toLowerCase()));
+    // No sorting - preserve original order from database
     return items;
   }
 
@@ -954,27 +954,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             // Convert file path to content URI for SAF
             final fileUri = Uri.file(pickedFile.path!);
             
-            // Use SAF-compatible import
-            final safImportService = SafZipImportService(repo: _repo);
-            final res = await safImportService.importFromZipUri(
-              zipUri: fileUri,
-              password: password.trim(),
-              destinationFolderId: _currentFolderId,
-              onImportComplete: (result) {
-                // This callback can be used for progress updates
-              },
-            );
-            
             if (!mounted) return;
             messenger.hideCurrentSnackBar();
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text('Successfully imported ${res.filesImported} files and ${res.foldersCreated} folders via SAF'),
-                backgroundColor: Colors.green,
+            
+            // Show progress dialog
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => _ZipImportProgressDialog(
+                zipUri: fileUri,
+                password: password.trim(),
+                destinationFolderId: _currentFolderId,
+                repo: _repo,
+                onComplete: () {
+                  Navigator.pop(context);
+                  _refresh();
+                },
               ),
             );
-            
-            await _refresh();
             return;
           }
           
@@ -2165,6 +2162,250 @@ class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog
           TextButton(
             onPressed: widget.onComplete,
             child: const Text('Close'),
+          ),
+      ],
+    );
+  }
+}
+
+
+// ZIP Import Progress Dialog with time estimation
+class _ZipImportProgressDialog extends StatefulWidget {
+  final Uri zipUri;
+  final String password;
+  final int? destinationFolderId;
+  final VaultRepository repo;
+  final VoidCallback onComplete;
+
+  const _ZipImportProgressDialog({
+    required this.zipUri,
+    required this.password,
+    required this.destinationFolderId,
+    required this.repo,
+    required this.onComplete,
+  });
+
+  @override
+  State<_ZipImportProgressDialog> createState() => _ZipImportProgressDialogState();
+}
+
+class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
+  String _statusMessage = 'Starting import...';
+  String _currentFile = '';
+  int _filesProcessed = 0;
+  int _totalFiles = 0;
+  DateTime? _startTime;
+  bool _isComplete = false;
+  String? _errorMessage;
+  bool _cancelled = false;
+  
+  // Debug info
+  final List<String> _debugLog = [];
+  int _extractedCount = 0;
+  int _encryptedCount = 0;
+  int _savedCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTime = DateTime.now();
+    _startImport();
+  }
+
+  Future<void> _startImport() async {
+    try {
+      final safImportService = SafZipImportService(repo: widget.repo);
+      
+      final result = await safImportService.importFromZipUri(
+        zipUri: widget.zipUri,
+        password: widget.password,
+        destinationFolderId: widget.destinationFolderId,
+        onProgress: (current, total, filename) {
+          if (_cancelled) return;
+          if (mounted) {
+            setState(() {
+              _filesProcessed = current;
+              _totalFiles = total;
+              // Truncate filename to prevent memory issues
+              _currentFile = filename.length > 40 ? '${filename.substring(0, 40)}...' : filename;
+            });
+          }
+        },
+        onStatusUpdate: (status) {
+          if (_cancelled) return;
+          if (mounted) {
+            setState(() {
+              // Truncate status to prevent memory issues
+              _statusMessage = status.length > 50 ? '${status.substring(0, 50)}...' : status;
+              
+              // Track debug info
+              _debugLog.add(status);
+              if (_debugLog.length > 10) _debugLog.removeAt(0); // Keep last 10
+              
+              // Parse status for counts using structured format
+              if (status.startsWith('EXTRACTED:')) {
+                final match = RegExp(r'(\d+)').firstMatch(status);
+                if (match != null) _extractedCount = int.parse(match.group(1)!);
+              } else if (status.startsWith('ENCRYPTED:')) {
+                final match = RegExp(r'(\d+)').firstMatch(status);
+                if (match != null) _encryptedCount = int.parse(match.group(1)!);
+              } else if (status.startsWith('SAVED:')) {
+                final match = RegExp(r'(\d+)').firstMatch(status);
+                if (match != null) _savedCount = int.parse(match.group(1)!);
+              }
+            });
+          }
+        },
+        onImportComplete: (result) {
+          if (_cancelled) return;
+          if (mounted) {
+            setState(() {
+              _isComplete = true;
+              _statusMessage = 'Import completed! Imported ${result.filesImported} files and ${result.foldersCreated} folders.';
+            });
+          }
+        },
+      );
+
+      if (_cancelled) return;
+      
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _statusMessage = 'Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders!';
+        });
+      }
+    } catch (e) {
+      if (_cancelled) return;
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _errorMessage = e.toString();
+          _statusMessage = 'Import failed: $e';
+        });
+      }
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = _totalFiles > 0 ? _filesProcessed / _totalFiles : 0.0;
+    final progressPercent = (progress * 100).toInt();
+    
+    // Calculate time estimation
+    String timeEstimate = '';
+    if (_startTime != null && _filesProcessed > 0 && !_isComplete) {
+      final elapsed = DateTime.now().difference(_startTime!);
+      final avgTimePerFile = elapsed.inMilliseconds / _filesProcessed;
+      final remainingFiles = _totalFiles - _filesProcessed;
+      final estimatedRemaining = Duration(milliseconds: (avgTimePerFile * remainingFiles).round());
+      timeEstimate = 'Est. time remaining: ${_formatDuration(estimatedRemaining)}';
+    }
+
+    return AlertDialog(
+      title: Text(_isComplete ? 'Import Complete' : 'Importing ZIP'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!_isComplete) ...[
+              LinearProgressIndicator(value: progress),
+              const SizedBox(height: 16),
+              Text('Progress: $_filesProcessed / $_totalFiles files ($progressPercent%)'),
+              if (_currentFile.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Current: $_currentFile', style: const TextStyle(fontSize: 12)),
+              ],
+              if (timeEstimate.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(timeEstimate, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+              const SizedBox(height: 16),
+              Text(_statusMessage, style: const TextStyle(fontSize: 12)),
+              
+              // DEBUG INFO
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('DEBUG INFO:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+                    Text('Extracted: $_extractedCount', style: const TextStyle(fontSize: 10)),
+                    Text('Encrypted: $_encryptedCount', style: const TextStyle(fontSize: 10)),
+                    Text('Saved to DB: $_savedCount', style: const TextStyle(fontSize: 10)),
+                    const SizedBox(height: 4),
+                    const Text('Recent logs:', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                    ..._debugLog.take(_debugLog.length > 5 ? 5 : _debugLog.length).map((log) => Text(
+                      log.length > 60 ? '${log.substring(0, 60)}...' : log,
+                      style: const TextStyle(fontSize: 8),
+                    )),
+                  ],
+                ),
+              ),
+            ] else ...[
+              if (_errorMessage != null) ...[
+                const Icon(Icons.error, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              ] else ...[
+                const Icon(Icons.check_circle, color: Colors.green, size: 48),
+                const SizedBox(height: 16),
+                Text(_statusMessage),
+                
+                // DEBUG INFO for completed import
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('FINAL COUNTS:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+                      Text('Extracted: $_extractedCount', style: const TextStyle(fontSize: 10)),
+                      Text('Encrypted: $_encryptedCount', style: const TextStyle(fontSize: 10)),
+                      Text('Saved to DB: $_savedCount', style: const TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (!_isComplete)
+          TextButton(
+            onPressed: () {
+              setState(() => _cancelled = true);
+              Navigator.pop(context);
+            },
+            child: const Text('Cancel'),
+          ),
+        if (_isComplete)
+          FilledButton(
+            onPressed: () {
+              widget.onComplete();
+            },
+            child: const Text('Done'),
           ),
       ],
     );

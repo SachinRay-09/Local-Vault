@@ -128,8 +128,8 @@ class YomikiruIntegrationService {
       foldersToProcess.addAll(subfolders.map((f) => f.id));
     }
     
-    // Sort files by name for proper reading order
-    allFiles.sort((a, b) => a.originalName.compareTo(b.originalName));
+    // Files already sorted by sortOrder from listFiles()
+    // No need to sort again - preserve original file system order
     
     return allFiles;
   }

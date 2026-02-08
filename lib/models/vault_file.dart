@@ -25,5 +25,11 @@ class VaultFile {
   late String ivBase64;
 
   late DateTime createdAt;
+
+  /// Sort order to preserve original file system sequence
+  /// Files are assigned sequential numbers during import (0, 1, 2, 3...)
+  /// This ensures files display in exact same order as source folder
+  @Index()
+  int sortOrder = 0;
 }
 

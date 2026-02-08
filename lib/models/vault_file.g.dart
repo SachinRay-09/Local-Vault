@@ -47,8 +47,13 @@ const VaultFileSchema = CollectionSchema(
       name: r'parentFolderId',
       type: IsarType.long,
     ),
-    r'storedBlobName': PropertySchema(
+    r'sortOrder': PropertySchema(
       id: 6,
+      name: r'sortOrder',
+      type: IsarType.long,
+    ),
+    r'storedBlobName': PropertySchema(
+      id: 7,
       name: r'storedBlobName',
       type: IsarType.string,
     )
@@ -67,6 +72,19 @@ const VaultFileSchema = CollectionSchema(
       properties: [
         IndexPropertySchema(
           name: r'parentFolderId',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'sortOrder': IndexSchema(
+      id: -1119549396205841918,
+      name: r'sortOrder',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'sortOrder',
           type: IndexType.value,
           caseSensitive: false,
         )
@@ -111,7 +129,8 @@ void _vaultFileSerialize(
   writer.writeString(offsets[3], object.mimeType);
   writer.writeString(offsets[4], object.originalName);
   writer.writeLong(offsets[5], object.parentFolderId);
-  writer.writeString(offsets[6], object.storedBlobName);
+  writer.writeLong(offsets[6], object.sortOrder);
+  writer.writeString(offsets[7], object.storedBlobName);
 }
 
 VaultFile _vaultFileDeserialize(
@@ -128,7 +147,8 @@ VaultFile _vaultFileDeserialize(
   object.mimeType = reader.readStringOrNull(offsets[3]);
   object.originalName = reader.readString(offsets[4]);
   object.parentFolderId = reader.readLongOrNull(offsets[5]);
-  object.storedBlobName = reader.readString(offsets[6]);
+  object.sortOrder = reader.readLong(offsets[6]);
+  object.storedBlobName = reader.readString(offsets[7]);
   return object;
 }
 
@@ -152,6 +172,8 @@ P _vaultFileDeserializeProp<P>(
     case 5:
       return (reader.readLongOrNull(offset)) as P;
     case 6:
+      return (reader.readLong(offset)) as P;
+    case 7:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -182,6 +204,14 @@ extension VaultFileQueryWhereSort
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         const IndexWhereClause.any(indexName: r'parentFolderId'),
+      );
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterWhere> anySortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'sortOrder'),
       );
     });
   }
@@ -361,6 +391,96 @@ extension VaultFileQueryWhere
         lower: [lowerParentFolderId],
         includeLower: includeLower,
         upper: [upperParentFolderId],
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterWhereClause> sortOrderEqualTo(
+      int sortOrder) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'sortOrder',
+        value: [sortOrder],
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterWhereClause> sortOrderNotEqualTo(
+      int sortOrder) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'sortOrder',
+              lower: [],
+              upper: [sortOrder],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'sortOrder',
+              lower: [sortOrder],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'sortOrder',
+              lower: [sortOrder],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'sortOrder',
+              lower: [],
+              upper: [sortOrder],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterWhereClause> sortOrderGreaterThan(
+    int sortOrder, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'sortOrder',
+        lower: [sortOrder],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterWhereClause> sortOrderLessThan(
+    int sortOrder, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'sortOrder',
+        lower: [],
+        upper: [sortOrder],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterWhereClause> sortOrderBetween(
+    int lowerSortOrder,
+    int upperSortOrder, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'sortOrder',
+        lower: [lowerSortOrder],
+        includeLower: includeLower,
+        upper: [upperSortOrder],
         includeUpper: includeUpper,
       ));
     });
@@ -1017,6 +1137,60 @@ extension VaultFileQueryFilter
     });
   }
 
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition> sortOrderEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'sortOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition>
+      sortOrderGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'sortOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition> sortOrderLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'sortOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition> sortOrderBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'sortOrder',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition>
       storedBlobNameEqualTo(
     String value, {
@@ -1233,6 +1407,18 @@ extension VaultFileQuerySortBy on QueryBuilder<VaultFile, VaultFile, QSortBy> {
     });
   }
 
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> sortBySortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sortOrder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> sortBySortOrderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sortOrder', Sort.desc);
+    });
+  }
+
   QueryBuilder<VaultFile, VaultFile, QAfterSortBy> sortByStoredBlobName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'storedBlobName', Sort.asc);
@@ -1332,6 +1518,18 @@ extension VaultFileQuerySortThenBy
     });
   }
 
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> thenBySortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sortOrder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> thenBySortOrderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sortOrder', Sort.desc);
+    });
+  }
+
   QueryBuilder<VaultFile, VaultFile, QAfterSortBy> thenByStoredBlobName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'storedBlobName', Sort.asc);
@@ -1386,6 +1584,12 @@ extension VaultFileQueryWhereDistinct
     });
   }
 
+  QueryBuilder<VaultFile, VaultFile, QDistinct> distinctBySortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'sortOrder');
+    });
+  }
+
   QueryBuilder<VaultFile, VaultFile, QDistinct> distinctByStoredBlobName(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1436,6 +1640,12 @@ extension VaultFileQueryProperty
   QueryBuilder<VaultFile, int?, QQueryOperations> parentFolderIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'parentFolderId');
+    });
+  }
+
+  QueryBuilder<VaultFile, int, QQueryOperations> sortOrderProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'sortOrder');
     });
   }
 

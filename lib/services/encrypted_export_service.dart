@@ -9,6 +9,7 @@ import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
 import 'vault_repository.dart';
 import 'vault_open_service.dart';
+import 'isolate_encryption_service.dart';
 
 /// Service for creating password-protected encrypted archives for cross-platform transfer
 /// Uses AES-256-CBC with PBKDF2 key derivation for maximum compatibility
@@ -124,12 +125,15 @@ class EncryptedExportService {
 
   /// Import password-protected encrypted archive
   /// Compatible with AES-256-CBC + PBKDF2 encryption
+  /// Uses isolate-based batch encryption for speed
   Future<EncryptedImportResult> importEncryptedArchive({
     required String archivePath,
     required String password,
     int? parentFolderId,
     Function(String)? onProgress,
   }) async {
+    Directory? tempDir;
+    
     try {
       onProgress?.call('Reading encrypted archive...');
       
@@ -172,41 +176,110 @@ class EncryptedExportService {
       
       // Track created folders
       final createdFolders = <String, int>{'': rootFolder.id};
-      int filesImported = 0;
-      final errors = <String>[];
       
-      // Import all files
+      // Create temp directory for extracted files
+      tempDir = await Directory.systemTemp.createTemp('vault_import_');
+      
+      // Group files by folder path for batch processing
+      final filesByFolder = <String, List<_TempFileInfo>>{};
+      
+      onProgress?.call('Organizing files...');
+      
+      // Extract files to temp directory and group by folder
       for (final file in archive.files) {
         if (file.name == 'vault_info.json') continue;
         
         if (file.isFile) {
-          try {
-            final filePath = file.name;
-            final fileName = path.basename(filePath);
-            final dirPath = path.dirname(filePath);
+          final filePath = file.name;
+          final dirPath = path.dirname(filePath);
+          
+          // Write file to temp directory
+          final tempFilePath = path.join(tempDir.path, file.name);
+          final tempFile = File(tempFilePath);
+          await tempFile.create(recursive: true);
+          await tempFile.writeAsBytes(file.content as List<int>);
+          
+          // Group by folder
+          filesByFolder.putIfAbsent(dirPath, () => []).add(
+            _TempFileInfo(
+              tempPath: tempFilePath,
+              originalName: path.basename(filePath),
+              dirPath: dirPath,
+            ),
+          );
+        }
+      }
+      
+      onProgress?.call('Importing files with batch encryption...');
+      
+      // Get master key for encryption
+      final masterKey32 = await openService.secureStorage.getOrCreateMasterKey32();
+      
+      int filesImported = 0;
+      final errors = <String>[];
+      
+      // Process each folder's files in batches
+      for (final entry in filesByFolder.entries) {
+        final dirPath = entry.key;
+        final files = entry.value;
+        
+        try {
+          // Ensure folder structure exists
+          int targetFolderId = rootFolder.id;
+          if (dirPath != '.' && dirPath.isNotEmpty) {
+            targetFolderId = await _ensureFolderPath(dirPath, rootFolder.id, createdFolders);
+          }
+          
+          // Process files in batches of 50
+          const batchSize = 50;
+          for (int i = 0; i < files.length; i += batchSize) {
+            final batchEnd = (i + batchSize).clamp(0, files.length);
+            final batch = files.sublist(i, batchEnd);
             
-            // Ensure folder structure exists
-            int targetFolderId = rootFolder.id;
-            if (dirPath != '.' && dirPath.isNotEmpty) {
-              targetFolderId = await _ensureFolderPath(dirPath, rootFolder.id, createdFolders);
-            }
+            // Encrypt batch in isolate
+            final filePaths = batch.map((f) => f.tempPath).toList();
+            final isolateService = IsolateEncryptionService();
             
-            // Import file
-            await repo.addMedia(
-              originalName: fileName,
-              parentFolderId: targetFolderId,
-              sourcePath: null,
-              bytes: Uint8List.fromList(file.content as List<int>),
+            final encryptionResults = await isolateService.encryptFilesInBackground(
+              filePaths: filePaths,
+              masterKey32: masterKey32,
             );
             
-            filesImported++;
-            onProgress?.call('Imported: $filesImported files');
+            // Save encrypted files to database in batch
+            final vaultFiles = <VaultFile>[];
+            for (int j = 0; j < encryptionResults.length; j++) {
+              final result = encryptionResults[j];
+              final fileInfo = batch[j];
+              
+              if (result.success) {
+                final vaultFile = VaultFile()
+                  ..originalName = fileInfo.originalName
+                  ..storedBlobName = result.storedBlobName!
+                  ..byteSize = result.byteSize!
+                  ..ivBase64 = result.ivBase64!
+                  ..parentFolderId = targetFolderId
+                  ..createdAt = DateTime.now();
+                vaultFiles.add(vaultFile);
+                filesImported++;
+              } else {
+                errors.add('Failed to import ${fileInfo.originalName}: ${result.error}');
+              }
+            }
             
-          } catch (e) {
-            final error = 'Failed to import ${file.name}: $e';
-            errors.add(error);
-            debugPrint(error);
+            // Batch save to database
+            if (vaultFiles.isNotEmpty) {
+              await repo.batchSaveFiles(vaultFiles);
+            }
+            
+            onProgress?.call('Imported: $filesImported/${filesByFolder.values.fold(0, (sum, list) => sum + list.length)} files');
+            
+            // Yield to UI
+            await Future.delayed(const Duration(milliseconds: 10));
           }
+        } catch (e) {
+          final error = 'Failed to import folder $dirPath: $e';
+          errors.add(error);
+          debugPrint(error);
         }
       }
       
@@ -231,6 +304,15 @@ class EncryptedExportService {
         errors: [e.toString()],
         message: 'Import failed: $e',
       );
+    } finally {
+      // Clean up temp directory
+      if (tempDir != null) {
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (e) {
+          debugPrint('Failed to clean up temp directory: $e');
+        }
+      }
     }
   }
 
@@ -453,5 +535,18 @@ class EncryptedImportResult {
     required this.foldersCreated,
     required this.errors,
     required this.message,
+  });
+}
+
+/// Helper class for temp file tracking during import
+class _TempFileInfo {
+  final String tempPath;
+  final String originalName;
+  final String dirPath;
+  
+  _TempFileInfo({
+    required this.tempPath,
+    required this.originalName,
+    required this.dirPath,
   });
 }

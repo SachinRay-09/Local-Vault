@@ -24,9 +24,11 @@ class VaultRepository {
 
   Future<List<VaultFolder>> listFolders({required int? parentId}) async {
     final q = parentId == null
-        ? _isar.vaultFolders.filter().parentIdIsNull().sortByName()
-        : _isar.vaultFolders.filter().parentIdEqualTo(parentId).sortByName();
-    return q.findAll();
+        ? _isar.vaultFolders.filter().parentIdIsNull()
+        : _isar.vaultFolders.filter().parentIdEqualTo(parentId);
+    final folders = await q.findAll();
+    // No sorting - preserve original file system order
+    return folders;
   }
 
   Future<List<VaultFile>> listFiles({
@@ -38,19 +40,23 @@ class VaultRepository {
         ? _isar.vaultFiles.filter().parentFolderIdIsNull()
         : _isar.vaultFiles.filter().parentFolderIdEqualTo(parentId);
     
-    final sortedQuery = baseQuery.sortByOriginalName();
-    
+    List<VaultFile> files;
     if (offset != null && limit != null) {
-      return sortedQuery.offset(offset).limit(limit).findAll();
+      files = await baseQuery.sortBySortOrder().offset(offset).limit(limit).findAll();
     } else if (offset != null) {
-      return sortedQuery.offset(offset).findAll();
+      files = await baseQuery.sortBySortOrder().offset(offset).findAll();
     } else if (limit != null) {
-      return sortedQuery.limit(limit).findAll();
+      files = await baseQuery.sortBySortOrder().limit(limit).findAll();
     } else {
-      return sortedQuery.findAll();
+      files = await baseQuery.sortBySortOrder().findAll();
     }
+    
+    // Sorted by sortOrder - preserves original file system order
+    return files;
   }
-
+  
+  /// Natural/alphanumeric comparison for proper sorting (1, 2, 3... 10... 100)
+  /// Based on "The Alphanum Algorithm" - http://www.davekoelle.com/alphanum.html
   Future<int> countFiles({required int? parentId}) async {
     final q = parentId == null
         ? _isar.vaultFiles.filter().parentFolderIdIsNull()
@@ -116,6 +122,9 @@ class VaultRepository {
       );
     }
 
+    // Get the next sortOrder for this folder
+    final maxSortOrder = await _getMaxSortOrder(parentFolderId);
+
     final file = VaultFile()
       ..parentFolderId = parentFolderId
       ..originalName = originalName
@@ -123,12 +132,33 @@ class VaultRepository {
       ..byteSize = writeResult.byteSize
       ..mimeType = mimeType
       ..ivBase64 = writeResult.ivBase64
-      ..createdAt = DateTime.now();
+      ..createdAt = DateTime.now()
+      ..sortOrder = maxSortOrder + 1;
 
     await _isar.writeTxn(() async {
       await _isar.vaultFiles.put(file);
     });
     return file;
+  }
+
+  /// Get the maximum sortOrder for files in a folder
+  Future<int> _getMaxSortOrder(int? parentFolderId) async {
+    final query = parentFolderId == null
+        ? _isar.vaultFiles.filter().parentFolderIdIsNull()
+        : _isar.vaultFiles.filter().parentFolderIdEqualTo(parentFolderId);
+    
+    final files = await query.sortBySortOrderDesc().limit(1).findAll();
+    return files.isEmpty ? -1 : files.first.sortOrder;
+  }
+
+  /// Batch save multiple files to database (for import optimization)
+  /// Files should already have encrypted blobs written to disk
+  Future<void> batchSaveFiles(List<VaultFile> files) async {
+    if (files.isEmpty) return;
+    
+    await _isar.writeTxn(() async {
+      await _isar.vaultFiles.putAll(files);
+    });
   }
 
   Future<void> renameFolder({
@@ -245,24 +275,25 @@ class VaultRepository {
   Future<List<VaultFolder>> searchFolders(String query, {int limit = 50}) async {
     final q = query.trim();
     if (q.isEmpty) return [];
-    // Case-insensitive contains.
-    return _isar.vaultFolders
+    // Case-insensitive contains - no sorting, preserve original order
+    final folders = await _isar.vaultFolders
         .filter()
         .nameContains(q, caseSensitive: false)
-        .sortByName()
         .limit(limit)
         .findAll();
+    return folders;
   }
 
   Future<List<VaultFile>> searchFiles(String query, {int limit = 50}) async {
     final q = query.trim();
     if (q.isEmpty) return [];
-    return _isar.vaultFiles
+    final files = await _isar.vaultFiles
         .filter()
         .originalNameContains(q, caseSensitive: false)
-        .sortByOriginalName()
+        .sortBySortOrder()  // Sort by sortOrder to preserve file system order
         .limit(limit)
         .findAll();
+    return files;
   }
 
   Future<void> moveFile({
@@ -317,4 +348,3 @@ class VaultRepository {
     // Base implementation - override in subclasses
   }
 }
-

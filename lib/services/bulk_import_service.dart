@@ -156,6 +156,7 @@ class BulkImportService {
   }
 
   /// Get all supported files from a directory recursively
+  /// Files are sorted naturally (1, 2, 3... 10... 100) to preserve folder structure
   Future<List<_FileInfo>> _getAllFiles(Directory dir) async {
     final List<_FileInfo> files = [];
     final basePath = dir.path;
@@ -170,7 +171,71 @@ class BulkImportService {
       }
     }
 
+    // CRITICAL: Sort files naturally to preserve folder structure
+    // Directory.list() returns files in platform-dependent order:
+    // - Windows: alphabetical (1, 10, 100, 2...)
+    // - Mac/Linux: unpredictable
+    // Natural sort ensures: 1, 2, 3... 10... 100
+    files.sort((a, b) => _compareNatural(a.relativePath, b.relativePath));
+
     return files;
+  }
+
+  /// Natural/alphanumeric comparison for proper sorting (1, 2, 3... 10... 100)
+  /// Based on "The Alphanum Algorithm" - http://www.davekoelle.com/alphanum.html
+  int _compareNatural(String a, String b) {
+    final aLower = a.toLowerCase();
+    final bLower = b.toLowerCase();
+    
+    int aIndex = 0;
+    int bIndex = 0;
+    
+    while (aIndex < aLower.length && bIndex < bLower.length) {
+      final aChar = aLower[aIndex];
+      final bChar = bLower[bIndex];
+      
+      // Check if both are digits
+      if (_isDigit(aChar) && _isDigit(bChar)) {
+        // Extract full numbers
+        final aNum = _extractNumber(aLower, aIndex);
+        final bNum = _extractNumber(bLower, bIndex);
+        
+        // Compare numbers numerically
+        if (aNum.value != bNum.value) {
+          return aNum.value.compareTo(bNum.value);
+        }
+        
+        // Move indices past the numbers
+        aIndex = aNum.endIndex;
+        bIndex = bNum.endIndex;
+      } else {
+        // Compare characters normally
+        if (aChar != bChar) {
+          return aChar.compareTo(bChar);
+        }
+        aIndex++;
+        bIndex++;
+      }
+    }
+    
+    // If one string is a prefix of the other
+    return aLower.length.compareTo(bLower.length);
+  }
+  
+  bool _isDigit(String char) {
+    return char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57;
+  }
+  
+  _NumberExtraction _extractNumber(String str, int startIndex) {
+    int endIndex = startIndex;
+    while (endIndex < str.length && _isDigit(str[endIndex])) {
+      endIndex++;
+    }
+    final numStr = str.substring(startIndex, endIndex);
+    return _NumberExtraction(
+      value: int.parse(numStr),
+      endIndex: endIndex,
+    );
   }
 
   /// Ensure folder structure exists, creating folders as needed
@@ -227,4 +292,11 @@ class _FileInfo {
   
   final File file;
   final String relativePath;
+}
+
+class _NumberExtraction {
+  _NumberExtraction({required this.value, required this.endIndex});
+  
+  final int value;
+  final int endIndex;
 }
