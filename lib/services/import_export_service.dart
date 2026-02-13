@@ -84,6 +84,33 @@ class ImportExportService {
     }
   }
 
+  /// Export single folder to ZIP
+  Future<ExportAllResult> exportFolderToZip({
+    required int folderId,
+    required String outputZipPath,
+    bool usePassword = true,
+  }) async {
+    final password = usePassword ? _randomExportPassword() : '';
+
+    final staging = await Directory.systemTemp.createTemp('local_vault_folder_export_');
+    try {
+      await _writeFolderStagingFromDb(staging, folderId);
+
+      final encoder = usePassword 
+          ? ZipFileEncoder(password: password)
+          : ZipFileEncoder();
+      encoder.create(outputZipPath);
+      await encoder.addDirectory(staging, includeDirName: false);
+      await encoder.close();
+
+      return ExportAllResult(zipPath: outputZipPath, password: password);
+    } finally {
+      try {
+        await staging.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
   Future<ImportResult> importFromZip({
     required String zipPath,
     required String password,
@@ -388,6 +415,88 @@ class ImportExportService {
     for (final file in files) {
       final relDir = file.parentFolderId == null ? '' : folderRelPath(file.parentFolderId!);
       final outDir = relDir.isEmpty ? stagingRoot : Directory('${stagingRoot.path}${Platform.pathSeparator}$relDir');
+      await outDir.create(recursive: true);
+
+      final outPath = _uniqueFilePath(outDir, file.originalName);
+      await crypto.decryptBlobToFile(
+        storedBlobName: file.storedBlobName,
+        ivBase64: file.ivBase64,
+        masterKey32: masterKey32,
+        outputFile: File(outPath),
+      );
+    }
+  }
+
+  /// Write staging directory for a single folder and its subfolders
+  Future<void> _writeFolderStagingFromDb(Directory stagingRoot, int folderId) async {
+    final isar = IsarDb.instance;
+    
+    // Get all folders and files
+    final allFolders = await isar.vaultFolders.filter().idGreaterThan(0).findAll();
+    final allFiles = await isar.vaultFiles.filter().idGreaterThan(0).findAll();
+
+    // Build folder hierarchy
+    final folderById = <int, VaultFolder>{for (final f in allFolders) f.id: f};
+    
+    // Get the root folder being exported
+    final rootFolder = folderById[folderId];
+    if (rootFolder == null) {
+      throw Exception('Folder not found: $folderId');
+    }
+    
+    // Create root folder in staging directory to preserve structure
+    final rootFolderDir = Directory('${stagingRoot.path}${Platform.pathSeparator}${rootFolder.name}');
+    await rootFolderDir.create(recursive: true);
+    
+    // Find all descendant folders of the target folder
+    final descendantIds = <int>{folderId};
+    bool foundNew = true;
+    while (foundNew) {
+      foundNew = false;
+      for (final folder in allFolders) {
+        if (folder.parentId != null && descendantIds.contains(folder.parentId) && !descendantIds.contains(folder.id)) {
+          descendantIds.add(folder.id);
+          foundNew = true;
+        }
+      }
+    }
+
+    // Filter files that belong to this folder tree
+    final files = allFiles.where((f) => f.parentFolderId != null && descendantIds.contains(f.parentFolderId!)).toList();
+
+    final pathMemo = <int, String>{};
+
+    String folderRelPath(int id) {
+      if (id == folderId) {
+        // Root folder of export - use its name
+        return rootFolder.name;
+      }
+      
+      final cached = pathMemo[id];
+      if (cached != null) return cached;
+      
+      final folder = folderById[id];
+      if (folder == null) return rootFolder.name;
+      
+      final parentId = folder.parentId;
+      if (parentId == folderId) {
+        // Direct child of root folder
+        final p = '${rootFolder.name}${Platform.pathSeparator}${folder.name}';
+        pathMemo[id] = p;
+        return p;
+      }
+      
+      final parentPath = parentId == null ? rootFolder.name : folderRelPath(parentId);
+      final p = '$parentPath${Platform.pathSeparator}${folder.name}';
+      pathMemo[id] = p;
+      return p;
+    }
+
+    final masterKey32 = await secureStorage.getOrCreateMasterKey32();
+
+    for (final file in files) {
+      final relDir = folderRelPath(file.parentFolderId!);
+      final outDir = Directory('${stagingRoot.path}${Platform.pathSeparator}$relDir');
       await outDir.create(recursive: true);
 
       final outPath = _uniqueFilePath(outDir, file.originalName);

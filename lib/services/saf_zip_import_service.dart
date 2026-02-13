@@ -54,6 +54,17 @@ class SafZipImportService {
         // Extract ZIP from temp file
         await _extractZipFromFile(tempZipPath, extractDir.path, password, onProgress, onStatusUpdate);
         
+        // Delete the temp ZIP file before importing to prevent it from being imported
+        try {
+          final tempZipFile = File(tempZipPath);
+          if (await tempZipFile.exists()) {
+            await tempZipFile.delete();
+            debugPrint('Deleted temp ZIP file before import');
+          }
+        } catch (e) {
+          debugPrint('Failed to delete temp ZIP file: $e');
+        }
+        
         onStatusUpdate?.call('Importing files to vault...');
         
         // Import extracted files using existing logic
@@ -166,8 +177,8 @@ class SafZipImportService {
           
           archive = ZipDecoder().decodeBytes(bytes, password: password, verify: true);
           
-          // Clear bytes immediately to free memory
-          bytes.clear();
+          // Don't clear bytes here - archive entries reference this data
+          // Memory will be freed when archive is cleared after extraction
         } catch (e) {
           debugPrint('Failed to decode password-protected ZIP: $e');
           if (e.toString().toLowerCase().contains('password') || 
@@ -230,8 +241,8 @@ class SafZipImportService {
                 }
               }
               
-              // Clear entry from memory after extraction
-              entry.clear();
+              // Don't clear entry for password-protected ZIPs - causes "fixed-length list" error
+              // The archive will be cleared as a whole after extraction
               
             } catch (e) {
               debugPrint('Failed to extract ${entry.name}: $e');

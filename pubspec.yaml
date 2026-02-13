@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.1.0+1
+version: 2.5.0+5
 
 environment:
   sdk: ^3.2.6
@@ -47,6 +47,7 @@ dependencies:
   pointycastle: ^3.7.3
   video_player: ^2.8.1
   path: ^1.8.3
+  fvp: ^0.28.0
   
   # SAF and URI handling for Android 15 compatibility
   uri_content: ^0.0.3
@@ -72,6 +73,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^3.0.0
   msix: ^3.10.0
+  inno_bundle: ^0.4.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -115,12 +117,36 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# MSIX Configuration for Windows Installer
+# MSIX Configuration for Windows Installer (DEPRECATED - Use Inno Setup instead)
+# MSIX has sandboxing issues that interfere with file encryption
 msix_config:
   display_name: Local Vault
   publisher_display_name: Local Vault Developer
   identity_name: com.localvault.app
-  msix_version: 2.1.0.0
+  msix_version: 2.5.0.0
   description: Secure encrypted file storage and manga reading app
   # logo_path: assets/icon.png  # Optional - add if you have an icon
   capabilities: 'removableStorage,documentsLibrary,picturesLibrary'
+
+# Inno Setup Configuration for Windows Installer (RECOMMENDED)
+# Creates a traditional .exe installer without sandboxing issues
+inno_bundle:
+  id: 6887eaf9-6a35-50a9-a882-2b63efe063bc  # IMPORTANT: Never change this after first deployment
+  publisher: Local Vault Developer
+  name: local_vault  # Must match the actual .exe file name
+  display_name: Local Vault  # Display name for shortcuts
+  description: Secure encrypted file storage and manga reading app
+  
+  # Language configuration - only English to avoid missing language file errors
+  languages:
+    - english
+  
+  # Optional: Uncomment and configure if you have these files
+  # icon_path: assets/icon.ico
+  # license_path: LICENSE.txt
+  
+  # Installation settings
+  install_dir_name: LocalVault
+  start_menu_folder: Local Vault
+  create_desktop_shortcut: true
+  allow_user_install_dir: true

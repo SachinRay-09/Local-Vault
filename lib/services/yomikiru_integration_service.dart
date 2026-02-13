@@ -42,26 +42,34 @@ class YomikiruIntegrationService {
   final VaultOpenService openService;
 
   /// Export a folder to a temporary location and open with Yomikiru
-  Future<YomikiruLaunchResult> openFolderInYomikiru(VaultFolder folder) async {
+  Future<YomikiruLaunchResult> openFolderInYomikiru(
+    VaultFolder folder, {
+    Function(String)? onProgress,
+  }) async {
     try {
       debugPrint('Starting Yomikiru export for folder: ${folder.name}');
+      onProgress?.call('Preparing export...');
       
       // Create temporary export directory
       final tempDir = await _createTempExportDir(folder.name);
       debugPrint('Created temp directory: ${tempDir.path}');
+      onProgress?.call('Created temp folder');
       
       // Get all files in the folder (including subfolders)
       final allFiles = await _getAllFilesInFolder(folder.id);
       debugPrint('Found ${allFiles.length} image files');
+      onProgress?.call('Found ${allFiles.length} images');
       
       if (allFiles.isEmpty) {
         throw Exception('No images found in folder "${folder.name}"');
       }
 
       // Decrypt and export all images to temp directory
-      await _exportFilesToTemp(allFiles, tempDir, folder.id);
+      await _exportFilesToTemp(allFiles, tempDir, folder.id, onProgress);
+      onProgress?.call('Export completed');
       
       // Try to launch Yomikiru with the folder
+      onProgress?.call('Launching Yomikiru...');
       final launchResult = await _launchYomikiru(tempDir.path);
       
       // Always return success with temp path - user will confirm cleanup manually
@@ -154,10 +162,13 @@ class YomikiruIntegrationService {
   Future<void> _exportFilesToTemp(
     List<VaultFile> files, 
     Directory tempDir, 
-    int rootFolderId
+    int rootFolderId,
+    Function(String)? onProgress,
   ) async {
     debugPrint('Exporting ${files.length} files to ${tempDir.path}');
+    onProgress?.call('Decrypting files...');
     
+    int processed = 0;
     for (final file in files) {
       try {
         // Decrypt file
@@ -179,6 +190,8 @@ class YomikiruIntegrationService {
         // Copy decrypted file
         await decryptedFile.copy(destFile.path);
         
+        processed++;
+        onProgress?.call('Decrypting files... ($processed/${files.length})');
         debugPrint('Exported: $relativePath');
         
       } catch (e) {

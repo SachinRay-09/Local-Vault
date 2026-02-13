@@ -7,7 +7,6 @@ import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/bulk_import_service.dart' as bulk;
-import '../../services/encrypted_export_service.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/import_export_service.dart';
@@ -49,11 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
     repo: _repo,
     crypto: const FileCryptoService(),
     secureStorage: SecureStorageService.instance,
-  );
-
-  late final EncryptedExportService _encryptedExport = EncryptedExportService(
-    repo: _repo,
-    openService: _openService,
   );
 
   late final bulk.BulkImportService _bulkImport = bulk.BulkImportService(
@@ -424,165 +418,321 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
       
       final outPath = await _importExport.pickExportPath();
       if (outPath == null || outPath.trim().isEmpty) return;
 
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(content: Text('Exporting...')));
 
-      try {
-        final result = await _importExport.exportAllToZip(
+      // Show progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _ExportAllProgressDialog(
+          importExport: _importExport,
           outputZipPath: outPath,
           usePassword: usePassword,
-        );
-        if (!mounted) return;
-        messenger.hideCurrentSnackBar();
-
-        if (usePassword) {
-          // Show password dialog
-          await showDialog<void>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.lock, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text('Export Complete'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('ZIP file saved successfully!'),
-                  const SizedBox(height: 16),
-                  const Text('File location:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    result.zipPath,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.key, color: Colors.amber, size: 20),
-                            SizedBox(width: 8),
-                            Text('Password:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          result.password,
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: result.password));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Password copied to clipboard')),
-                    );
-                  },
-                  child: const Text('Copy Password'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        } else {
-          // Show no-password success dialog
-          await showDialog<void>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text('Export Complete'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('ZIP file saved successfully!'),
-                  const SizedBox(height: 16),
-                  const Text('File location:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    result.zipPath,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.info, color: Colors.green, size: 20),
-                            SizedBox(width: 8),
-                            Text('No Password Required', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          '✓ Memory-efficient import (200MB)\n'
-                          '✓ Faster import with streaming\n'
-                          '✓ No Out of Memory errors',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      } catch (e) {
-        if (!mounted) return;
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
-      }
+          onComplete: (result) {
+            Navigator.pop(context); // Close progress dialog
+            _showExportSuccessDialog(result, usePassword);
+          },
+          onError: (error) {
+            Navigator.pop(context); // Close progress dialog
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Export failed: $error')),
+              );
+            }
+          },
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to start export: $e')),
         );
       }
+    }
+  }
+
+  /// Save all vault content to local gallery (unencrypted ZIP)
+  /// Windows: User chooses location
+  /// Android: Saves to Downloads folder
+  Future<void> _saveToLocalGallery() async {
+    try {
+      debugPrint('Starting Save to Local Gallery...');
+      
+      if (!mounted) return;
+      
+      String? outPath;
+      
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        // Desktop: Let user choose location
+        outPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save to Local Gallery',
+          fileName: 'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip',
+          type: FileType.custom,
+          allowedExtensions: ['zip'],
+        );
+        
+        if (outPath == null) {
+          debugPrint('User cancelled file picker');
+          return; // User cancelled
+        }
+      } else {
+        // Android: Save to Downloads folder
+        const downloadsPath = '/storage/emulated/0/Download';
+        final fileName = 'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip';
+        outPath = '$downloadsPath/$fileName';
+        debugPrint('Android: Saving to $outPath');
+      }
+
+      if (!mounted) return;
+
+      // Show progress dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _SaveToGalleryProgressDialog(
+          importExport: _importExport,
+          outputZipPath: outPath!,
+          onComplete: (result) {
+            Navigator.pop(context); // Close progress dialog
+            _showGallerySaveSuccessDialog(result);
+          },
+          onError: (error) {
+            Navigator.pop(context); // Close progress dialog
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Save failed: $error')),
+              );
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      debugPrint('Failed to start save to gallery: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start save: $e')),
+        );
+      }
+    }
+  }
+
+  /// Show gallery save success dialog
+  void _showGallerySaveSuccessDialog(ExportAllResult result) {
+    if (!mounted) return;
+    
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Saved to Local Gallery'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('All vault content has been saved as an unencrypted ZIP file.'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                      SizedBox(width: 8),
+                      Text('File Location:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    result.zipPath,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.warning_amber, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Text('Not Encrypted:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'This ZIP file is NOT password protected. Anyone can open it with any ZIP tool.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show export success dialog
+  void _showExportSuccessDialog(ExportAllResult result, bool usePassword) {
+    if (!mounted) return;
+    
+    if (usePassword) {
+      // Show password dialog
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Export Complete'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('ZIP file saved successfully!'),
+              const SizedBox(height: 16),
+              const Text('File location:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              SelectableText(
+                result.zipPath,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.key, color: Colors.amber, size: 20),
+                        SizedBox(width: 8),
+                        Text('Password:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      result.password,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: result.password));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Password copied to clipboard')),
+                );
+              },
+              child: const Text('Copy Password'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Show no-password success dialog
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Export Complete'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('ZIP file saved successfully!'),
+              const SizedBox(height: 16),
+              const Text('File location:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              SelectableText(
+                result.zipPath,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info, color: Colors.green, size: 20),
+                        SizedBox(width: 8),
+                        Text('No Password', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Text('This ZIP can be imported on Android without password.'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -761,32 +911,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openFolderInYomikiru(VaultFolder folder) async {
-    final messenger = ScaffoldMessenger.of(context);
+    if (!mounted) return;
     
-    try {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Preparing "${folder.name}" for Yomikiru...')),
-      );
-
-      final result = await _yomikiru.openFolderInYomikiru(folder);
-      
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      
-      if (result.success) {
-        // Yomikiru launched successfully
-        _showYomikiruSuccessDialog(folder.name, result.tempFolderPath);
-      } else {
-        // Yomikiru not found, show path for manual setup
-        _showYomikiruNotFoundDialog(result.tempFolderPath, result.error);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to open in Yomikiru: $e')),
-      );
-    }
+    // Show progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _YomikiruProgressDialog(
+        yomikiru: _yomikiru,
+        folder: folder,
+        onComplete: (result) {
+          Navigator.pop(context); // Close progress dialog
+          if (result.success) {
+            _showYomikiruSuccessDialog(folder.name, result.tempFolderPath);
+          } else {
+            _showYomikiruNotFoundDialog(result.tempFolderPath, result.error);
+          }
+        },
+        onError: (error) {
+          Navigator.pop(context); // Close progress dialog
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to open in Yomikiru: $error')),
+            );
+          }
+        },
+      ),
+    );
   }
 
   void _showYomikiruSuccessDialog(String folderName, String tempPath) {
@@ -1029,6 +1180,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const PopupMenuItem(
+          value: 'export_zip',
+          child: Row(
+            children: [
+              Icon(Icons.folder_zip, size: 20),
+              SizedBox(width: 12),
+              Text('Export as ZIP'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
           value: 'move',
           child: Row(
             children: [
@@ -1064,6 +1225,9 @@ class _HomeScreenState extends State<HomeScreen> {
         switch (value) {
           case 'yomikiru':
             _openFolderInYomikiru(folder);
+            break;
+          case 'export_zip':
+            _exportFolderAsZip(folder);
             break;
           case 'move':
             _moveFolder(folder);
@@ -1133,8 +1297,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Export folder as encrypted archive for PC-to-phone transfer
-  Future<void> _exportFolderEncrypted(VaultFolder folder) async {
+  /// Export single folder as ZIP (Windows only)
+  Future<void> _exportFolderAsZip(VaultFolder folder) async {
     try {
       // Show export options dialog
       final usePassword = await _showExportOptionsDialog();
@@ -1142,24 +1306,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return; // User cancelled
       }
 
-      String? password;
-      if (usePassword) {
-        // Show password dialog
-        password = await _showPasswordDialog(
-          title: 'Set Export Password',
-          message: 'Enter a password to encrypt the export file.\nYou will need this password to import on your phone:',
-        );
-        if (password == null || password.isEmpty) {
-          return; // User cancelled or empty password
-        }
-      }
-
+      if (!mounted) return;
+      
       // Choose export location
       final outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save Encrypted Vault',
-        fileName: '${folder.name}_encrypted.vault',
+        dialogTitle: 'Save ZIP File',
+        fileName: '${folder.name}.zip',
         type: FileType.custom,
-        allowedExtensions: ['vault'],
+        allowedExtensions: ['zip'],
       );
 
       if (outputPath == null) {
@@ -1167,32 +1321,27 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
 
-      // Show enhanced progress dialog
+      // Show progress dialog
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _ExportProgressDialog(
-          encryptedExport: _encryptedExport,
+        builder: (context) => _ExportFolderZipProgressDialog(
+          importExport: _importExport,
           folder: folder,
-          password: password ?? '', // Empty password for unencrypted
-          outputPath: outputPath,
+          outputZipPath: outputPath,
+          usePassword: usePassword,
           onComplete: (result) {
             Navigator.pop(context); // Close progress dialog
-            if (result.success) {
-              _showEncryptedExportSuccessDialog(result, password, usePassword);
-            } else {
-              messenger.showSnackBar(
-                SnackBar(content: Text('Export failed: ${result.message}')),
-              );
-            }
+            _showExportSuccessDialog(result, usePassword);
           },
           onError: (error) {
             Navigator.pop(context); // Close progress dialog
-            messenger.showSnackBar(
-              SnackBar(content: Text('Export failed: $error')),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Export failed: $error')),
+              );
+            }
           },
         ),
       );
@@ -1308,181 +1457,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showEncryptedExportSuccessDialog(EncryptedExportResult result, String? password, bool usePassword) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(usePassword ? Icons.lock : Icons.check_circle, color: Colors.green),
-            const SizedBox(width: 8),
-            Text(usePassword ? 'Encrypted Export Ready' : 'Export Ready'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(result.message),
-              const SizedBox(height: 16),
-              
-              // Password reminder (only if password was used)
-              if (usePassword && password != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.key, color: Colors.amber, size: 20),
-                          SizedBox(width: 8),
-                          Text('Remember this password:', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SelectableText(
-                        password,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'You will need this password to import the file on your phone.',
-                        style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              
-              // No password info
-              if (!usePassword) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.info, color: Colors.green, size: 20),
-                          SizedBox(width: 8),
-                          Text('No Password Required', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '✓ Memory-efficient import (200MB)\n'
-                        '✓ Faster import with streaming\n'
-                        '✓ No Out of Memory errors\n'
-                        '✓ Files are encrypted in vault',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              
-              const Text('Export file location:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  result.outputPath,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              Text(
-                '📱 Next steps:\n'
-                '1. Transfer this .vault file to your Android device\n'
-                '2. Open Local Vault on Android\n'
-                '3. Use "Import Encrypted Vault" from the menu\n'
-                '4. Select the .vault file from Downloads\n'
-                '${usePassword ? "5. Enter the password shown above" : "5. No password needed - just import!"}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          if (usePassword && password != null)
-            TextButton(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: password));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password copied to clipboard')),
-                );
-              },
-              child: const Text('Copy Password'),
-            ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<String?> _showPasswordDialog({
-    required String title,
-    required String message,
-  }) async {
-    String? password;
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            const SizedBox(height: 16),
-            TextField(
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-                helperText: 'Use a strong password for security',
-              ),
-              onChanged: (value) => password = value,
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, null),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, password),
-            child: const Text('Create Export'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _renameFile(VaultFile file) async {
     final controller = TextEditingController(text: file.originalName);
@@ -1684,6 +1658,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (value == 'import') await _importZip();
                 if (value == 'import_folder') await _importFolder();
                 if (value == 'export') await _exportAll();
+                if (value == 'save_gallery') await _saveToLocalGallery();
                 if (value == 'lock') {
                   if (!context.mounted) return;
                   Navigator.of(context).pushAndRemoveUntil(
@@ -1704,6 +1679,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PopupMenuItem(value: 'import_folder', child: Text('Import Folder')),
                 PopupMenuItem(value: 'import', child: Text('Import ZIP')),
                 PopupMenuItem(value: 'export', child: Text('Export')),
+                PopupMenuItem(value: 'save_gallery', child: Text('Save to Local Gallery')),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'sort_name', child: Text('Sort: Name')),
                 PopupMenuItem(value: 'sort_date', child: Text('Sort: Date')),
@@ -1768,10 +1744,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                       onTap: () => Navigator.pop(context, 'yomikiru'),
                                     ),
                                     ListTile(
-                                      leading: const Icon(Icons.lock),
-                                      title: const Text('Export Encrypted'),
-                                      subtitle: const Text('For PC-to-phone transfer'),
-                                      onTap: () => Navigator.pop(context, 'export_encrypted'),
+                                      leading: const Icon(Icons.folder_zip),
+                                      title: const Text('Export as ZIP'),
+                                      subtitle: const Text('Export this folder only'),
+                                      onTap: () => Navigator.pop(context, 'export_zip'),
                                     ),
                                     ListTile(
                                       leading: const Icon(Icons.drive_file_move_outline),
@@ -1793,7 +1769,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             );
                             if (action == 'yomikiru') await _openFolderInYomikiru(folder);
-                            if (action == 'export_encrypted') await _exportFolderEncrypted(folder);
+                            if (action == 'export_zip') await _exportFolderAsZip(folder);
                             if (action == 'move') await _moveFolder(folder);
                             if (action == 'rename') await _renameFolder(folder);
                             if (action == 'delete') await _deleteFolder(folder);
@@ -2112,33 +2088,30 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
   }
 }
 
-/// Enhanced export progress dialog for Windows
-class _ExportProgressDialog extends StatefulWidget {
-  const _ExportProgressDialog({
-    required this.encryptedExport,
-    required this.folder,
-    required this.password,
-    required this.outputPath,
+
+/// Export All progress dialog for Windows
+class _ExportAllProgressDialog extends StatefulWidget {
+  const _ExportAllProgressDialog({
+    required this.importExport,
+    required this.outputZipPath,
+    required this.usePassword,
     required this.onComplete,
     required this.onError,
   });
 
-  final EncryptedExportService encryptedExport;
-  final VaultFolder folder;
-  final String password;
-  final String outputPath;
-  final Function(EncryptedExportResult) onComplete;
+  final ImportExportService importExport;
+  final String outputZipPath;
+  final bool usePassword;
+  final Function(ExportAllResult) onComplete;
   final Function(String) onError;
 
   @override
-  State<_ExportProgressDialog> createState() => _ExportProgressDialogState();
+  State<_ExportAllProgressDialog> createState() => _ExportAllProgressDialogState();
 }
 
-class _ExportProgressDialogState extends State<_ExportProgressDialog> {
+class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
   String _currentStatus = 'Preparing export...';
   bool _isComplete = false;
-  int _filesProcessed = 0;
-  int _totalFiles = 0;
   DateTime? _startTime;
 
   @override
@@ -2150,27 +2123,19 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
 
   Future<void> _startExport() async {
     try {
-      final result = await widget.encryptedExport.exportFolderAsEncryptedArchive(
-        folder: widget.folder,
-        password: widget.password,
-        outputPath: widget.outputPath,
-        onProgress: (status) {
-          if (mounted) {
-            setState(() {
-              _currentStatus = status;
-              // Parse progress from status like "Processing files: 50/200"
-              final match = RegExp(r'(\d+)/(\d+)').firstMatch(status);
-              if (match != null) {
-                _filesProcessed = int.parse(match.group(1)!);
-                _totalFiles = int.parse(match.group(2)!);
-              }
-            });
-          }
-        },
+      setState(() => _currentStatus = 'Decrypting files...');
+      await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
+      
+      final result = await widget.importExport.exportAllToZip(
+        outputZipPath: widget.outputZipPath,
+        usePassword: widget.usePassword,
       );
 
       if (mounted) {
-        setState(() => _isComplete = true);
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Export completed successfully!';
+        });
         widget.onComplete(result);
       }
     } catch (e) {
@@ -2193,17 +2158,373 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final progress = _totalFiles > 0 ? _filesProcessed / _totalFiles : 0.0;
-    final progressPercent = (progress * 100).toInt();
-    
-    // Calculate time estimation
-    String timeEstimate = '';
-    if (_startTime != null && _filesProcessed > 0 && !_isComplete && _totalFiles > 0) {
+    // Calculate elapsed time
+    String elapsedTime = '';
+    if (_startTime != null) {
       final elapsed = DateTime.now().difference(_startTime!);
-      final avgTimePerFile = elapsed.inMilliseconds / _filesProcessed;
-      final remainingFiles = _totalFiles - _filesProcessed;
-      final estimatedRemaining = Duration(milliseconds: (avgTimePerFile * remainingFiles).round());
-      timeEstimate = 'Est. time remaining: ${_formatDuration(estimatedRemaining)}';
+      elapsedTime = 'Elapsed: ${_formatDuration(elapsed)}';
+    }
+
+    return PopScope(
+      canPop: _isComplete, // Prevent closing during export
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Export Complete' : 'Exporting Vault'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!_isComplete) ...[
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 24),
+                Text(_currentStatus, style: const TextStyle(fontSize: 14)),
+                if (elapsedTime.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(elapsedTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+                const SizedBox(height: 16),
+                const Text(
+                  'This may take a few minutes depending on vault size...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ] else ...[
+                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const SizedBox(height: 16),
+                Text(_currentStatus),
+              ],
+            ],
+          ),
+        ),
+        actions: _isComplete
+            ? [
+                FilledButton(
+                  onPressed: () {
+                    // Dialog will be closed by onComplete callback
+                  },
+                  child: const Text('Done'),
+                ),
+              ]
+            : null,
+      ),
+    );
+  }
+}
+
+/// Save to Gallery progress dialog (unencrypted ZIP export)
+class _SaveToGalleryProgressDialog extends StatefulWidget {
+  const _SaveToGalleryProgressDialog({
+    required this.importExport,
+    required this.outputZipPath,
+    required this.onComplete,
+    required this.onError,
+  });
+
+  final ImportExportService importExport;
+  final String outputZipPath;
+  final Function(ExportAllResult) onComplete;
+  final Function(String) onError;
+
+  @override
+  State<_SaveToGalleryProgressDialog> createState() => _SaveToGalleryProgressDialogState();
+}
+
+class _SaveToGalleryProgressDialogState extends State<_SaveToGalleryProgressDialog> {
+  String _currentStatus = 'Preparing to save...';
+  bool _isComplete = false;
+  DateTime? _startTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTime = DateTime.now();
+    _startSave();
+  }
+
+  Future<void> _startSave() async {
+    try {
+      setState(() => _currentStatus = 'Decrypting files...');
+      await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
+      
+      // Export without password (unencrypted ZIP)
+      final result = await widget.importExport.exportAllToZip(
+        outputZipPath: widget.outputZipPath,
+        usePassword: false, // No password = unencrypted
+      );
+
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Saved successfully!';
+        });
+        widget.onComplete(result);
+      }
+    } catch (e) {
+      debugPrint('Save to gallery error: $e');
+      if (mounted) {
+        setState(() => _isComplete = true);
+        widget.onError(e.toString());
+      }
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Calculate elapsed time
+    String elapsedTime = '';
+    if (_startTime != null) {
+      final elapsed = DateTime.now().difference(_startTime!);
+      elapsedTime = 'Elapsed: ${_formatDuration(elapsed)}';
+    }
+
+    return PopScope(
+      canPop: _isComplete, // Prevent closing during save
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Save Complete' : 'Saving to Local Gallery'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!_isComplete) ...[
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 24),
+                Text(_currentStatus, style: const TextStyle(fontSize: 14)),
+                if (elapsedTime.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(elapsedTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+                const SizedBox(height: 16),
+                const Text(
+                  'Creating unencrypted ZIP file...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ] else ...[
+                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const SizedBox(height: 16),
+                Text(_currentStatus),
+              ],
+            ],
+          ),
+        ),
+        actions: _isComplete
+            ? [
+                FilledButton(
+                  onPressed: () {
+                    // Dialog will be closed by onComplete callback
+                  },
+                  child: const Text('Done'),
+                ),
+              ]
+            : null,
+      ),
+    );
+  }
+}
+
+/// Yomikiru progress dialog for Windows
+class _YomikiruProgressDialog extends StatefulWidget {
+  const _YomikiruProgressDialog({
+    required this.yomikiru,
+    required this.folder,
+    required this.onComplete,
+    required this.onError,
+  });
+
+  final YomikiruIntegrationService yomikiru;
+  final VaultFolder folder;
+  final Function(YomikiruLaunchResult) onComplete;
+  final Function(String) onError;
+
+  @override
+  State<_YomikiruProgressDialog> createState() => _YomikiruProgressDialogState();
+}
+
+class _YomikiruProgressDialogState extends State<_YomikiruProgressDialog> {
+  String _currentStatus = 'Preparing export...';
+  bool _isComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startExport();
+  }
+
+  Future<void> _startExport() async {
+    try {
+      final result = await widget.yomikiru.openFolderInYomikiru(
+        widget.folder,
+        onProgress: (status) {
+          if (mounted) {
+            setState(() {
+              _currentStatus = status;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Export completed successfully!';
+        });
+        
+        // Wait a moment to show completion, then call callback
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (mounted) {
+          widget.onComplete(result);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Export failed: $e';
+        });
+        
+        // Wait a moment to show error, then call callback
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (mounted) {
+          widget.onError(e.toString());
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Export Complete' : 'Opening in Yomikiru'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!_isComplete) ...[
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 24),
+                Text(_currentStatus, style: const TextStyle(fontSize: 14)),
+                const SizedBox(height: 16),
+                const Text(
+                  'Decrypting and exporting images...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ] else ...[
+                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const SizedBox(height: 16),
+                Text(_currentStatus),
+              ],
+            ],
+          ),
+        ),
+        actions: _isComplete
+            ? [
+                FilledButton(
+                  onPressed: () {
+                    // Dialog will be closed by onComplete callback
+                  },
+                  child: const Text('Done'),
+                ),
+              ]
+            : null,
+      ),
+    );
+  }
+}
+
+/// Export Folder as ZIP progress dialog for Windows
+class _ExportFolderZipProgressDialog extends StatefulWidget {
+  const _ExportFolderZipProgressDialog({
+    required this.importExport,
+    required this.folder,
+    required this.outputZipPath,
+    required this.usePassword,
+    required this.onComplete,
+    required this.onError,
+  });
+
+  final ImportExportService importExport;
+  final VaultFolder folder;
+  final String outputZipPath;
+  final bool usePassword;
+  final Function(ExportAllResult) onComplete;
+  final Function(String) onError;
+
+  @override
+  State<_ExportFolderZipProgressDialog> createState() => _ExportFolderZipProgressDialogState();
+}
+
+class _ExportFolderZipProgressDialogState extends State<_ExportFolderZipProgressDialog> {
+  String _currentStatus = 'Preparing export...';
+  bool _isComplete = false;
+  DateTime? _startTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTime = DateTime.now();
+    _startExport();
+  }
+
+  Future<void> _startExport() async {
+    try {
+      setState(() => _currentStatus = 'Decrypting files from folder...');
+      await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
+      
+      final result = await widget.importExport.exportFolderToZip(
+        folderId: widget.folder.id,
+        outputZipPath: widget.outputZipPath,
+        usePassword: widget.usePassword,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Export completed successfully!';
+        });
+        widget.onComplete(result);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isComplete = true);
+        widget.onError(e.toString());
+      }
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Calculate elapsed time
+    String elapsedTime = '';
+    if (_startTime != null) {
+      final elapsed = DateTime.now().difference(_startTime!);
+      elapsedTime = 'Elapsed: ${_formatDuration(elapsed)}';
     }
 
     return PopScope(
@@ -2217,19 +2538,18 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!_isComplete) ...[
-                if (_totalFiles > 0) ...[
-                  LinearProgressIndicator(value: progress),
-                  const SizedBox(height: 16),
-                  Text('Progress: $_filesProcessed / $_totalFiles files ($progressPercent%)'),
-                  if (timeEstimate.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(timeEstimate, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                ] else ...[
-                  const Center(child: CircularProgressIndicator()),
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 24),
+                Text(_currentStatus, style: const TextStyle(fontSize: 14)),
+                if (elapsedTime.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(elapsedTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
                 const SizedBox(height: 16),
-                Text(_currentStatus, style: const TextStyle(fontSize: 12)),
+                Text(
+                  'Exporting: ${widget.folder.name}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                ),
               ] else ...[
                 const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
                 const SizedBox(height: 16),

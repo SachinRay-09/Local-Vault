@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_windows
+  fvp
   isar_flutter_libs
   permission_handler_windows
   share_plus

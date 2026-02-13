@@ -1,189 +1,275 @@
-# Local Vault v2.1.0 - Cross-Platform Encrypted File Storage
+# Local Vault - Secure Encrypted File Storage & Manga Reader
 
-**Local Vault** is a production-ready encrypted file storage application built with Flutter. It provides 100% offline security with AES-256 encryption, cross-platform support (Windows + Android), and specialized manga collection management with external reader integration.
+**Version 2.5.0** | Professional-Grade Encrypted Storage Solution
 
-## 🚀 Key Features
+![Local Vault](App_Icon/playstore.png)
 
-### 🔒 **Security & Privacy**
-- **AES-256 Encryption**: Military-grade encryption for all stored files
-- **PBKDF2 Password Hashing**: 600,000 iterations for strong password protection
-- **100% Offline**: No cloud dependency, all data stays on your device
-- **Secure Temp Files**: Isolated temporary folders with user-controlled cleanup
+## 🔐 Overview
 
-### 📱 **Cross-Platform Support**
-- **Windows Desktop**: Full-featured desktop application (.exe and .msix)
-- **Android Mobile**: Complete mobile app with touch-optimized interface
-- **Seamless Transfer**: Encrypted vault files for cross-platform collection sharing
-- **Platform Detection**: Automatic UI adaptation for desktop vs mobile
+Local Vault is a cross-platform (Windows & Android) encrypted file storage application with specialized manga reading capabilities. It provides military-grade AES-256 encryption for your sensitive files while maintaining an intuitive user experience.
 
-### 📦 **Import/Export System**
-- **ZIP Import**: Import entire folder structures with progress tracking
-- **Password Options**: Export with or without password protection
-- **Memory Efficient**: Streaming extraction for non-encrypted ZIPs (200MB)
-- **Progress Display**: Real-time progress with debug information
-- **File Order Preservation**: Natural sorting maintains correct file order (1, 2, 3... 10... 100)
+## ✨ Key Features
 
-### 📚 **Manga Collection Management**
-- **Bulk Import**: Import entire folder structures with encryption
-- **Advanced Search**: Search across file names, tags, and metadata
-- **Batch Operations**: Multi-select operations for efficient management
-- **External Reader Integration**: Mihon, Tachiyomi, Perfect Viewer support
-- **Custom Temp Folders**: User-configurable temp folder locations for manga readers
+### 🛡️ Security & Encryption
+- **AES-256-CBC Encryption**: Military-grade encryption for all stored files
+- **Secure Password Management**: Master password with recovery key support
+- **Encrypted Storage**: All files encrypted at rest in secure vault
+- **No Cloud Dependency**: Complete offline operation for maximum privacy
 
-### ⚡ **Performance Optimized**
-- **Memory Efficient**: <300MB RAM usage, handles 10,000+ images smoothly
-- **High Performance**: 120 FPS average, optimized for large collections
-- **Progressive Loading**: Smart image caching and thumbnail generation
-- **Responsive UI**: Batched operations with proper yielding prevent UI freeze
+### 📁 File Management
+- **Folder Organization**: Hierarchical folder structure with unlimited nesting
+- **Bulk Import**: Import entire folder structures with preserved organization
+- **Natural Sort**: Files maintain original order (1, 2, 3... not 1, 10, 2...)
+- **Search Functionality**: Fast search across files and folders
+- **Multi-Select Operations**: Batch operations on multiple files/folders
 
-## 📥 Installation
+### 📱 Cross-Platform Support
+- **Windows Desktop**: Full-featured desktop application with Yomikiru integration
+- **Android Mobile**: Native Android app with Mihon manga reader integration
+- **ZIP Export/Import**: Transfer encrypted data between devices
+- **Password-Protected ZIP**: Optional password protection for exports
 
-### Windows Desktop
-1. Download `local_vault.exe` or `local_vault.msix` from releases
-2. Run the installer or executable
-3. Create your first vault with a strong password
+### 📚 Manga Reading Integration
+- **Yomikiru (Windows)**: Seamless integration with Yomikiru manga reader
+- **Mihon (Android)**: Direct integration with Mihon/Tachiyomi
+- **Progress Tracking**: Real-time progress during temp folder creation
+- **Auto-Cleanup**: Manual cleanup of temporary reading folders
+- **Custom Temp Locations**: Configure temp folder locations on Android
 
-### Android Mobile
-1. Download `local_vault_v2.1.0_android.apk` from releases
-2. Enable "Install from unknown sources" in Android settings
-3. Install the APK file
-4. Grant storage permissions when prompted
+### 🚀 Performance Optimizations
+- **Hardware Acceleration**: GPU-accelerated video playback on Windows (FVP)
+- **Memory Management**: Optimized for low memory usage (200MB for imports)
+- **Progressive Loading**: Efficient loading of large image collections
+- **Batch Processing**: Optimized batch encryption/decryption
+- **Thumbnail Caching**: Fast image preview generation
 
-## 🔄 Cross-Platform Workflow
-
-### PC to Android Transfer
-1. **PC**: Create and manage your manga collections in Local Vault
-2. **PC**: Right-click any folder → "Export Encrypted ZIP"
-   - Choose "Without Password" (recommended for Android - 200MB memory)
-   - Or "With Password" (requires 1.2GB memory on Android)
-3. **Transfer**: Move the ZIP file to your Android device (USB, cloud, etc.)
-4. **Android**: Open Local Vault → "Import ZIP" → Select file → Enter password (if used)
-5. **Android**: Watch progress with real-time debug info
-6. **Android**: Browse imported folders → "Open in Manga Reader" → Choose your preferred app
-7. **Android**: Use "Clean Up" to remove temp files after reading
-
-### Supported Manga Readers
-- **Mihon** (Priority detection and integration)
-- **Tachiyomi** (Original and forks)
-- **Perfect Viewer** (Excellent for local collections)
-- **ComicScreen** (Simple and fast)
-- **CDisplayEx** (Feature-rich reader)
-
-## 🛠 Technical Specifications
-
-### Security Implementation
-- **Encryption**: AES-256-CTR with streaming for large files
-- **Key Derivation**: PBKDF2 with 600,000 iterations
-- **File Structure**: Encrypted blobs with plaintext metadata for performance
-- **Integrity**: Built-in verification and error recovery
-
-### Performance Achievements
-- **Memory Usage**: 10.4MB idle, <300MB peak (90% improvement from original 3GB)
-- **CPU Optimization**: <55% during operations (38% improvement)
-- **Frame Rate**: 120 FPS average with smooth navigation
-- **Large Collections**: Tested with 10,000+ images without performance degradation
-- **ZIP Import**: 2900 files in 12-17 minutes with smooth progress updates
-
-### Cross-Platform Architecture
-- **Shared Business Logic**: Common services and models across platforms
-- **Platform-Specific UI**: Optimized interfaces for desktop and mobile
-- **Native Integration**: Platform-specific file pickers, sharing, and permissions
-- **Responsive Design**: Automatic layout adaptation for different screen sizes
-
-## 🔧 Advanced Features
-
-### ZIP Import System (v2.1.0)
-- **Progress Tracking**: Real-time file-by-file progress updates
-- **Debug Display**: On-screen debug panel shows:
-  - Files extracted from ZIP
-  - Files encrypted successfully
-  - Files saved to database
-  - Recent status messages
-- **Memory Management**: 
-  - Non-encrypted ZIPs: 200MB constant (streaming)
-  - Password-protected ZIPs: 1.2GB spike (necessary for decryption)
-- **File Order**: Natural sort algorithm preserves correct order
-- **UI Responsiveness**: Batched operations with yielding prevent freeze
-
-### Android-Specific Enhancements
-- **Custom Temp Folders**: Configure where manga reader temp files are created
-- **Mihon Integration**: Automatic detection and priority launching
-- **Storage Permissions**: Proper Android 13+ media permissions handling
-- **File Provider**: Secure file sharing between apps
-
-### Performance Optimizations
-- **Main-Thread Encryption**: Batched with proper yielding for UI responsiveness
-- **Progressive Image Loading**: ResizeImage with smart resolution scaling
-- **Memory Management**: Strategic RepaintBoundary usage (4 widgets only)
-- **Smart Caching**: 50MB image cache with LRU management
-
-## 🚀 Version History
-
-### v2.1.0 (Current) - ZIP Import Fix & Performance
-- ✅ Fixed ZIP import (files now save correctly to database)
-- ✅ Added on-screen debug display for import progress
-- ✅ Implemented natural sort for correct file order
-- ✅ Added export password option (with/without password)
-- ✅ Memory optimization (200MB for non-encrypted, 1.2GB for encrypted)
-- ✅ Smooth progress updates with batched operations
-
-### v2.0.2 - Mobile Support Complete
-- ✅ Full Android mobile app with touch-optimized UI
-- ✅ Cross-platform vault import/export system
-- ✅ Mihon integration with custom temp folder support
-- ✅ Performance optimizations (90% memory improvement, 38% CPU improvement)
-- ✅ Android 15 compatibility and file picker fixes
-
-### v1.3 - Windows Production
-- ✅ Complete Windows desktop application
-- ✅ All performance optimizations implemented
-- ✅ Production-ready .exe and .msix builds
-
-## 🛡 Security & Privacy
-
-Local Vault is designed with privacy-first principles:
-- **No Telemetry**: Zero data collection or tracking
-- **Offline-Only**: No internet connection required or used
-- **Local Storage**: All data remains on your device
-- **Open Architecture**: Transparent encryption and file handling
+### 🔄 Import/Export Features
+- **Folder Import**: Import entire folder structures with encryption
+- **ZIP Import**: Import password-protected or plain ZIP files
+- **ZIP Export**: Export folders as encrypted ZIP files
+- **Export All**: Export entire vault as single ZIP file
+- **Save to Gallery**: Quick unencrypted backup to local storage
+- **Android 15+ SAF**: Full Storage Access Framework support
 
 ## 📋 System Requirements
 
 ### Windows
-- Windows 10 or later
-- 4GB RAM minimum (8GB recommended for large collections)
-- 100MB free disk space + storage for your collections
+- **OS**: Windows 10 or later (64-bit)
+- **RAM**: 4GB minimum, 8GB recommended
+- **Storage**: 100MB for app + space for encrypted files
+- **Optional**: Yomikiru manga reader for manga integration
 
 ### Android
-- Android 7.0 (API level 24) or later
-- 2GB RAM minimum (4GB recommended for password-protected ZIPs)
-- Storage permission for file access
-- 50MB free space + storage for your collections
+- **OS**: Android 6.0 (API 23) or later
+- **RAM**: 2GB minimum, 4GB recommended
+- **Storage**: 50MB for app + space for encrypted files
+- **Permissions**: Storage access for file operations
+- **Optional**: Mihon/Tachiyomi for manga reading
 
-## 📖 Usage Tips
+## 🚀 Installation
 
-### For Best Performance
-1. **Use non-encrypted ZIPs** when possible (200MB vs 1.2GB memory)
-2. **Import during charging** for large collections (2000+ files)
-3. **Close other apps** during import to free memory
-4. **Watch debug display** to monitor progress
+### Windows
+1. Download `LocalVault-x86_64-2.5.0+5-Installer.exe`
+2. Run the installer
+3. Follow installation wizard
+4. Launch Local Vault from Start Menu or Desktop shortcut
 
-### Troubleshooting
-- **Import shows 0 files**: Check debug display for exact failure point
-- **Out of Memory**: Use non-encrypted ZIP export option
-- **Files in wrong order**: v2.1.0 fixes this with natural sort
-- **Import too slow**: Normal for large collections (12-17 min for 2900 files)
+### Android
+1. Download `app-release.apk`
+2. Enable "Install from Unknown Sources" in Settings
+3. Install the APK
+4. Grant required storage permissions
+5. Launch Local Vault
 
-## 🤝 Contributing
+## 📖 User Guide
 
-This is a personal project focused on secure, offline file storage with manga collection management. The codebase demonstrates modern Flutter development with cross-platform architecture, performance optimization, and security best practices.
+### First Time Setup
+1. **Create Master Password**: Choose a strong password (8+ characters)
+2. **Save Recovery Key**: Store recovery key in safe location
+3. **Grant Permissions**: Allow storage access (Android)
+
+### Importing Files
+1. **Import Folder**: 
+   - Windows: Menu → Import Folder → Select folder
+   - Android: Menu → Import Folder → Select folder via SAF
+2. **Import ZIP**:
+   - Menu → Import ZIP → Select ZIP file
+   - Enter password if ZIP is encrypted
+3. **Progress Tracking**: Real-time progress shown during import
+
+### Organizing Files
+- **Create Folders**: Right-click (Windows) or long-press (Android) → New Folder
+- **Move Files**: Drag & drop (Windows) or select → Move (Android)
+- **Rename**: Right-click/long-press → Rename
+- **Delete**: Right-click/long-press → Delete
+- **Search**: Use search bar to find files/folders
+
+### Reading Manga
+**Windows (Yomikiru):**
+1. Right-click folder → "Open in Yomikiru"
+2. Progress dialog shows decryption status
+3. Yomikiru launches automatically
+4. After reading: Use cleanup dialog to remove temp files
+
+**Android (Mihon):**
+1. Long-press folder → "Open in Mihon"
+2. Progress dialog shows decryption status
+3. Mihon launches automatically (if installed)
+4. After reading: Use cleanup dialog to remove temp files
+
+### Exporting Data
+1. **Export Folder as ZIP**:
+   - Right-click folder → "Export as ZIP"
+   - Choose password protection (optional)
+   - Select save location
+2. **Export All**:
+   - Menu → Export All
+   - Choose password protection
+   - Creates single ZIP of entire vault
+3. **Save to Gallery** (Android):
+   - Menu → Save to Local Gallery
+   - Creates unencrypted ZIP in Downloads
+
+### Transferring Between Devices
+1. **Windows → Android**:
+   - Export folder as ZIP (no password recommended)
+   - Transfer ZIP to Android device
+   - Import ZIP in Android app
+2. **Android → Windows**:
+   - Export folder as ZIP
+   - Transfer ZIP to Windows PC
+   - Import ZIP in Windows app
+
+## 🔧 Advanced Features
+
+### Custom Temp Folder Locations (Android)
+- Menu → Manga Reader Settings
+- Choose from preset locations or custom path
+- Recommended: `/storage/emulated/0/Manga/LocalVault`
+
+### Storage Permissions (Android)
+- Menu → Request Permissions
+- Grants full storage access for Android 11+
+- Required for optimal file operations
+
+### Recovery Key
+- Settings → View Recovery Key
+- Use to recover vault if password forgotten
+- Store securely offline
+
+### Undo Operations
+- Recent operations can be undone
+- Undo button appears after delete/move operations
+
+## 🏗️ Technical Architecture
+
+### Encryption
+- **Algorithm**: AES-256-CBC
+- **Key Derivation**: PBKDF2 with 10,000 iterations
+- **IV**: Unique initialization vector per file
+- **Salt**: Random salt for each encryption
+
+### Database
+- **Engine**: Isar (NoSQL embedded database)
+- **Schema**: Optimized for fast queries
+- **Indexing**: Indexed search fields for performance
+
+### File Storage
+- **Encrypted Blobs**: Files stored as encrypted blobs
+- **Metadata**: Separate metadata storage
+- **Folder Structure**: Virtual folder hierarchy in database
+
+### Performance
+- **Batch Operations**: Optimized batch processing
+- **Memory Streaming**: Stream-based encryption for large files
+- **Progressive Loading**: Load images on-demand
+- **Hardware Acceleration**: GPU acceleration where available
+
+## 📊 Version History
+
+### Version 2.5.0 (Current)
+- ✅ New app icon and branding
+- ✅ Progress dialogs for Yomikiru/Mihon integration
+- ✅ Real-time decryption progress tracking
+- ✅ Improved success dialogs with cleanup options
+- ✅ Enhanced user experience
+
+### Version 2.2.0
+- ✅ Added progress tracking for manga reader integration
+- ✅ Improved temp folder management
+- ✅ Enhanced error handling
+
+### Version 2.1.0
+- ✅ Removed non-functional vault file export/import
+- ✅ ZIP import/export fully functional
+- ✅ FVP integration for Windows video playback
+- ✅ Production-ready release
+
+### Version 2.0.0
+- ✅ Complete rewrite with modern architecture
+- ✅ Cross-platform support (Windows & Android)
+- ✅ Manga reader integration
+- ✅ Performance optimizations
+
+## 🐛 Troubleshooting
+
+### Windows Issues
+**Yomikiru not launching:**
+- Ensure Yomikiru is installed
+- Check temp folder path in success dialog
+- Manually navigate to temp folder in Yomikiru
+
+**Installation fails:**
+- Run installer as Administrator
+- Disable antivirus temporarily
+- Check Windows version (10+ required)
+
+### Android Issues
+**Import fails:**
+- Grant storage permissions
+- Check available storage space
+- Try smaller batches for large imports
+
+**Mihon not launching:**
+- Install Mihon from official source
+- Check temp folder location in settings
+- Manually open Mihon and navigate to temp folder
+
+**Out of Memory:**
+- Use ZIP export without password (uses 200MB vs 1.2GB+)
+- Close other apps before large operations
+- Restart device if issues persist
+
+## 🔒 Security Best Practices
+
+1. **Strong Password**: Use 12+ characters with mixed case, numbers, symbols
+2. **Recovery Key**: Store recovery key offline in secure location
+3. **Regular Backups**: Export vault regularly to external storage
+4. **Temp Cleanup**: Always cleanup temp folders after manga reading
+5. **Device Security**: Use device lock screen protection
+6. **No Cloud Sync**: Keep vault files local only
 
 ## 📄 License
 
-Local Vault is a personal project. All rights reserved.
+Copyright © 2024 Local Vault Developer. All rights reserved.
+
+This software is proprietary and confidential. Unauthorized copying, distribution, or modification is strictly prohibited.
+
+## 🤝 Support
+
+For support, feature requests, or bug reports:
+- Email: [Your support email]
+- GitHub: [Your repository URL]
+- Documentation: See BUILD_INSTRUCTIONS.md for development setup
+
+## 🙏 Acknowledgments
+
+- **Flutter**: Cross-platform framework
+- **Isar**: High-performance database
+- **FVP**: Hardware-accelerated video playback
+- **Yomikiru**: Windows manga reader
+- **Mihon**: Android manga reader
 
 ---
 
-**Latest Release**: v2.1.0 (February 8, 2026)
-**Platform Support**: Windows 10+, Android 7.0+
-**License**: Personal Project - All Rights Reserved
+**Built with ❤️ for secure file storage and manga reading**

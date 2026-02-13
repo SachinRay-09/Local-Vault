@@ -116,8 +116,13 @@ class AndroidMangaService {
   }
 
   /// Open folder in external manga reader with enhanced Mihon integration
-  Future<AndroidMangaReaderResult> openInMangaReader(VaultFolder folder) async {
+  Future<AndroidMangaReaderResult> openInMangaReader(
+    VaultFolder folder, {
+    Function(String)? onProgress,
+  }) async {
     try {
+      onProgress?.call('Checking permissions...');
+      
       // Check storage permissions
       final hasPermission = await _checkStoragePermissions();
       if (!hasPermission) {
@@ -128,17 +133,23 @@ class AndroidMangaService {
         );
       }
 
+      onProgress?.call('Detecting Mihon...');
+      
       // Detect Mihon first
       final mihonDetection = await detectMihon();
       
       // Get custom temp folder location
       final tempBasePath = await getCurrentTempFolderLocation();
       
+      onProgress?.call('Creating temp folder...');
+      
       // Create temp folder for manga reader in custom location
       final tempDir = await _createMangaReaderTempFolder(folder.name, tempBasePath);
       
+      onProgress?.call('Decrypting files...');
+      
       // Export all images to temp folder
-      final exportResult = await _exportFolderToTemp(folder, tempDir);
+      final exportResult = await _exportFolderToTemp(folder, tempDir, onProgress);
       
       if (!exportResult.success) {
         return AndroidMangaReaderResult(
@@ -150,6 +161,8 @@ class AndroidMangaService {
         );
       }
 
+      onProgress?.call('Launching manga reader...');
+      
       // Try to launch manga reader with Mihon priority
       final readerResult = await _launchMangaReaderWithMihonPriority(tempDir.path, mihonDetection);
       
@@ -831,7 +844,11 @@ class AndroidMangaService {
     }
   }
 
-  Future<AndroidExportTempResult> _exportFolderToTemp(VaultFolder folder, Directory tempDir) async {
+  Future<AndroidExportTempResult> _exportFolderToTemp(
+    VaultFolder folder, 
+    Directory tempDir,
+    Function(String)? onProgress,
+  ) async {
     try {
       // Get all files in folder
       final files = await _getAllFilesInFolder(folder.id);
@@ -843,6 +860,7 @@ class AndroidMangaService {
           final tempFilePath = path.join(tempDir.path, file.originalName);
           await openService.decryptToSpecificPath(file, tempFilePath);
           exported++;
+          onProgress?.call('Decrypting files... ($exported/${files.length})');
         } catch (e) {
           debugPrint('Failed to export file ${file.originalName}: $e');
         }

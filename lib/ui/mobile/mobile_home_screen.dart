@@ -10,7 +10,6 @@ import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/android_manga_service.dart';
 import '../../services/app_lifecycle_service.dart';
-import '../../services/encrypted_export_service.dart';
 import '../../services/enhanced_vault_repository.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
@@ -58,11 +57,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     repo: _repo,
     openService: _openService,
     settingsService: _settingsService,
-  );
-
-  late final EncryptedExportService _encryptedExport = EncryptedExportService(
-    repo: _repo,
-    openService: _openService,
   );
 
   int? _currentFolderId;
@@ -465,32 +459,38 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   /// Open folder in Mihon manga reader
   Future<void> _openFolderInMihon(VaultFolder folder) async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Preparing "${folder.name}" for Mihon...')),
-      );
-
-      final result = await _androidManga.openInMangaReader(folder);
-      
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      
-      if (result.success) {
-        _showMihonSuccessDialog(folder.name, result.tempFolderPath, result.mihonDetected, result.mihonAppName);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to open in Mihon: ${result.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to open in Mihon: $e')),
-      );
-    }
+    if (!mounted) return;
+    
+    // Show progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _MihonProgressDialog(
+        androidManga: _androidManga,
+        folder: folder,
+        onComplete: (result) {
+          Navigator.pop(context); // Close progress dialog
+          if (result.success) {
+            _showMihonSuccessDialog(folder.name, result.tempFolderPath, result.mihonDetected, result.mihonAppName);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to open in Mihon: ${result.message}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        },
+        onError: (error) {
+          Navigator.pop(context); // Close progress dialog
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to open in Mihon: $error')),
+            );
+          }
+        },
+      ),
+    );
   }
 
   void _showMihonSuccessDialog(String folderName, String tempPath, bool mihonDetected, String? mihonAppName) {
@@ -880,31 +880,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       if (result == null || result.files.isEmpty) return;
 
       final pickedFile = result.files.first;
-      final fileName = pickedFile.name.toLowerCase();
       
       // Show loading while we prepare the file
       messenger.showSnackBar(const SnackBar(content: Text('Preparing file...')));
       
       try {
-        // Check if it's an encrypted vault file
-        if (fileName.endsWith('.vault')) {
-          // Handle encrypted vault import
-          final password = await _showPasswordDialog(
-            title: 'Enter Export Password',
-            message: 'Enter the password you used when exporting from PC:',
-          );
-          if (password == null) return;
-
-          // Use file path for .vault files (they work with existing encrypted export service)
-          String? workingFilePath = pickedFile.path;
-          if (workingFilePath == null) {
-            throw Exception('Unable to access the selected vault file');
-          }
-
-          _showEncryptedImportProgressDialog(workingFilePath, password);
-          return;
-        }
-
         // Handle regular ZIP import with SAF for Android 15+ compatibility
         if (!mounted) return;
         messenger.hideCurrentSnackBar();
@@ -1088,67 +1068,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   /// Import Android vault (legacy format)
-  Future<void> _importAndroidVault() async {
-    try {
-      final fileResult = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Fixed for Android 15 compatibility
-        dialogTitle: 'Select Android Vault File',
-      );
-
-      if (fileResult == null || fileResult.files.isEmpty) return;
-
-      final vaultFilePath = fileResult.files.first.path;
-      if (vaultFilePath == null) {
-        throw Exception('Invalid file path');
-      }
-
-      // Show password dialog
-      final password = await _showPasswordDialog(
-        title: 'Enter Vault Password',
-        message: 'Enter the password for this Android vault:',
-      );
-      if (password == null) return;
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Importing Android vault...')),
-      );
-
-      // Import using Android manga service
-      final importResult = await _androidManga.importAndroidVault(
-        vaultFilePath: vaultFilePath,
-        password: password,
-        onProgress: (progress) {
-          debugPrint('Import progress: $progress');
-        },
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      
-      if (importResult.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Successfully imported ${importResult.filesImported} files'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        await _refresh();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Import failed: ${importResult.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to import Android vault: $e')),
-      );
-    }
-  }
+  // Removed: _importAndroidVault - Android vault import has been removed
+  // Use ZIP import instead
 
   /// Show temp folder settings for manga reader integration
   Future<void> _showTempFolderSettings() async {
@@ -1233,63 +1154,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         SnackBar(content: Text('Settings error: $e')),
       );
     }
-  }
-
-  void _showEncryptedImportProgressDialog(String vaultFilePath, String password) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _EncryptedImportProgressScreen(
-          vaultFilePath: vaultFilePath,
-          password: password,
-          encryptedExport: _encryptedExport,
-          onComplete: () {
-            Navigator.of(context).pop(); // Pop the import screen
-            _refresh(); // Refresh the main screen
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<String?> _showPasswordDialog({
-    String title = 'Enter Password',
-    String message = 'Enter password:',
-  }) async {
-    String? password;
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            const SizedBox(height: 16),
-            TextField(
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) => password = value,
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, null),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, password),
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Show storage permissions dialog and request permissions
@@ -1446,9 +1310,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     case 'import_zip':
                       await _importZip();
                       break;
-                    case 'import_android':
-                      await _importAndroidVault();
-                      break;
                     case 'export_all':
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Export not yet implemented on mobile')),
@@ -1487,16 +1348,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     child: ListTile(
                       leading: Icon(Icons.archive),
                       title: Text('Import ZIP'),
-                      subtitle: Text('Supports encrypted .vault files'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'import_android',
-                    child: ListTile(
-                      leading: Icon(Icons.android),
-                      title: Text('Import Android Vault'),
-                      subtitle: Text('Legacy format'),
+                      subtitle: Text('Password-protected or plain ZIP'),
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),
@@ -1718,132 +1570,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 }
 
-// Separate screen for encrypted import progress
-class _EncryptedImportProgressScreen extends StatefulWidget {
-  final String vaultFilePath;
-  final String password;
-  final EncryptedExportService encryptedExport;
-  final VoidCallback onComplete;
-
-  const _EncryptedImportProgressScreen({
-    required this.vaultFilePath,
-    required this.password,
-    required this.encryptedExport,
-    required this.onComplete,
-  });
-
-  @override
-  State<_EncryptedImportProgressScreen> createState() => _EncryptedImportProgressScreenState();
-}
-
-class _EncryptedImportProgressScreenState extends State<_EncryptedImportProgressScreen> {
-  String _status = 'Starting encrypted import...';
-  bool _isComplete = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _performImport();
-  }
-
-  Future<void> _performImport() async {
-    try {
-      setState(() => _status = 'Validating encrypted vault file...');
-      
-      final result = await widget.encryptedExport.importEncryptedArchive(
-        archivePath: widget.vaultFilePath,
-        password: widget.password,
-        onProgress: (progress) {
-          if (mounted) {
-            setState(() => _status = progress);
-          }
-        },
-      );
-
-      if (!mounted) return;
-
-      if (result.success) {
-        setState(() => _status = 'Import completed successfully!');
-        await Future.delayed(const Duration(seconds: 1));
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Successfully imported ${result.filesImported} files into "${result.folderName}"'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          setState(() => _isComplete = true);
-          widget.onComplete();
-        }
-      } else {
-        setState(() => _status = 'Import failed: ${result.message}');
-        await Future.delayed(const Duration(seconds: 2));
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Import failed: ${result.message}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          setState(() => _isComplete = true);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _status = 'Import failed: $e');
-        await Future.delayed(const Duration(seconds: 2));
-        
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Import failed: $e'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        });
-        setState(() => _isComplete = true);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Importing Encrypted Vault'),
-        automaticallyImplyLeading: _isComplete,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (!_isComplete) const CircularProgressIndicator(),
-              const SizedBox(height: 24),
-              Text(
-                _status,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16),
-              ),
-              if (_isComplete) ...[
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Done'),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 // Folder import progress dialog for mobile
 class _FolderImportProgressDialog extends StatefulWidget {
   final List<PlatformFile> files;
@@ -2408,6 +2134,119 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
             child: const Text('Done'),
           ),
       ],
+    );
+  }
+}
+
+
+/// Mihon progress dialog for Android
+class _MihonProgressDialog extends StatefulWidget {
+  const _MihonProgressDialog({
+    required this.androidManga,
+    required this.folder,
+    required this.onComplete,
+    required this.onError,
+  });
+
+  final AndroidMangaService androidManga;
+  final VaultFolder folder;
+  final Function(AndroidMangaReaderResult) onComplete;
+  final Function(String) onError;
+
+  @override
+  State<_MihonProgressDialog> createState() => _MihonProgressDialogState();
+}
+
+class _MihonProgressDialogState extends State<_MihonProgressDialog> {
+  String _currentStatus = 'Preparing export...';
+  bool _isComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startExport();
+  }
+
+  Future<void> _startExport() async {
+    try {
+      final result = await widget.androidManga.openInMangaReader(
+        widget.folder,
+        onProgress: (status) {
+          if (mounted) {
+            setState(() {
+              _currentStatus = status;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Export completed successfully!';
+        });
+        
+        // Wait a moment to show completion, then call callback
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (mounted) {
+          widget.onComplete(result);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _currentStatus = 'Export failed: $e';
+        });
+        
+        // Wait a moment to show error, then call callback
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (mounted) {
+          widget.onError(e.toString());
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Export Complete' : 'Opening in Mihon'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!_isComplete) ...[
+              const Center(child: CircularProgressIndicator()),
+              const SizedBox(height: 24),
+              Text(_currentStatus, style: const TextStyle(fontSize: 14)),
+              const SizedBox(height: 16),
+              const Text(
+                'Decrypting and exporting images...',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ] else ...[
+              const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+              const SizedBox(height: 16),
+              Text(_currentStatus),
+            ],
+          ],
+        ),
+        actions: _isComplete
+            ? [
+                FilledButton(
+                  onPressed: () {
+                    // Dialog will be closed by onComplete callback
+                  },
+                  child: const Text('Done'),
+                ),
+              ]
+            : null,
+      ),
     );
   }
 }
