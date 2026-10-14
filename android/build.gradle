@@ -58,7 +58,14 @@ subprojects {
             options.warnings = false
         }
     }
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    // Only redirect build dirs for subprojects (plugins), not for :app.
+    // Flutter tool expects :app build output at <repo_root>/build/app/.
+    if (project.name != 'app') {
+        project.buildDir = "${rootProject.buildDir}/${project.name}"
+    } else {
+        // Flutter tool expects APK at <repo_root>/build/app/
+        project.buildDir = "${rootProject.projectDir.parentFile}/build/app"
+    }
     project.evaluationDependsOn(":app")
 }
 
