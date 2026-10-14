@@ -9,22 +9,24 @@ import 'saf_zip_import_service.dart';
 import 'thermal_protection_service.dart';
 
 /// Unified import service that combines all import methods with smart encryption
+@Deprecated(
+    'Quarantined Phase 1 — use BulkImportService (desktop) or ImportCoordinator (Phase 2) instead')
 class UnifiedImportService {
   final EnhancedVaultRepository _enhancedRepo;
   final ImportExportService _legacyImport;
   final SafZipImportService _safImport;
   final ThermalProtectionService _thermal = ThermalProtectionService.instance;
-  
+
   UnifiedImportService({
     required EnhancedVaultRepository enhancedRepo,
-  }) : _enhancedRepo = enhancedRepo,
-       _legacyImport = ImportExportService(
-         repo: enhancedRepo,
-         crypto: enhancedRepo.crypto,
-         secureStorage: enhancedRepo.secureStorage,
-       ),
-       _safImport = SafZipImportService(repo: enhancedRepo);
-  
+  })  : _enhancedRepo = enhancedRepo,
+        _legacyImport = ImportExportService(
+          repo: enhancedRepo,
+          crypto: enhancedRepo.crypto,
+          secureStorage: enhancedRepo.secureStorage,
+        ),
+        _safImport = SafZipImportService(repo: enhancedRepo);
+
   /// Import multiple files with automatic strategy selection
   Future<UnifiedImportResult> importFiles({
     required List<File> files,
@@ -35,7 +37,7 @@ class UnifiedImportService {
   }) async {
     try {
       onStatusUpdate?.call('Starting smart import process...');
-      
+
       // Use enhanced repository for smart bulk import
       final result = await _enhancedRepo.addMultipleMedia(
         sourceFiles: files,
@@ -44,7 +46,7 @@ class UnifiedImportService {
         onProgress: onProgress,
         onStatusUpdate: onStatusUpdate,
       );
-      
+
       return UnifiedImportResult(
         success: result.success,
         filesImported: result.filesImported ?? 0,
@@ -53,7 +55,6 @@ class UnifiedImportService {
         performanceInfo: result.performanceGain ?? '',
         error: result.error,
       );
-      
     } catch (e) {
       debugPrint('Unified import failed: $e');
       return UnifiedImportResult(
@@ -62,7 +63,7 @@ class UnifiedImportService {
       );
     }
   }
-  
+
   /// Import ZIP file with SAF support and fallback
   Future<UnifiedImportResult> importZip({
     required String zipPath,
@@ -73,7 +74,7 @@ class UnifiedImportService {
   }) async {
     try {
       onStatusUpdate?.call('Importing ZIP file...');
-      
+
       // Try SAF import first (Android 15+ compatible)
       if (Platform.isAndroid) {
         try {
@@ -86,7 +87,7 @@ class UnifiedImportService {
               onProgress?.call(1.0);
             },
           );
-          
+
           return UnifiedImportResult(
             success: true,
             filesImported: safResult.filesImported,
@@ -94,20 +95,19 @@ class UnifiedImportService {
             strategy: 'SAF ZIP Import',
             performanceInfo: 'Android 15+ compatible',
           );
-          
         } catch (safError) {
           debugPrint('SAF import failed, trying legacy: $safError');
           onStatusUpdate?.call('SAF import failed, using fallback method...');
         }
       }
-      
+
       // Fallback to legacy import
       final legacyResult = await _legacyImport.importFromZip(
         zipPath: zipPath,
         password: password,
         destinationFolderId: destinationFolderId,
       );
-      
+
       return UnifiedImportResult(
         success: true,
         filesImported: legacyResult.filesImported,
@@ -115,7 +115,6 @@ class UnifiedImportService {
         strategy: 'Legacy ZIP Import',
         performanceInfo: 'Fallback method',
       );
-      
     } catch (e) {
       debugPrint('ZIP import failed: $e');
       return UnifiedImportResult(
@@ -124,12 +123,13 @@ class UnifiedImportService {
       );
     }
   }
-  
+
   /// Get import strategy preview without actually importing
   Future<ImportStrategyPreview> previewImportStrategy(List<File> files) async {
     try {
-      final analysis = EncryptionStrategyService.analyzeEncryptionStrategy(files);
-      
+      final analysis =
+          EncryptionStrategyService.analyzeEncryptionStrategy(files);
+
       return ImportStrategyPreview(
         recommendedStrategy: analysis.recommendedStrategy,
         reasoning: analysis.reasoning,
@@ -138,7 +138,7 @@ class UnifiedImportService {
         fileCount: files.length,
         totalSize: analysis.metrics['totalSize'] ?? 0,
         strategyDescription: EncryptionStrategyService.getStrategyDescription(
-          analysis.recommendedStrategy, 
+          analysis.recommendedStrategy,
           files.length,
         ),
         performanceDescription: EncryptionStrategyService.getPerformanceImpact(
@@ -146,7 +146,6 @@ class UnifiedImportService {
           analysis.memoryReduction,
         ),
       );
-      
     } catch (e) {
       debugPrint('Strategy preview failed: $e');
       return ImportStrategyPreview(
@@ -161,12 +160,12 @@ class UnifiedImportService {
       );
     }
   }
-  
+
   /// Get current thermal status for UI display
   ThermalStatus getCurrentThermalStatus() {
     final state = _thermal.currentState;
     final config = _thermal.getProcessingConfig();
-    
+
     return ThermalStatus(
       state: state,
       description: ThermalProtectionService.getThermalStateDescription(state),
@@ -185,7 +184,7 @@ class UnifiedImportResult {
   final String strategy;
   final String performanceInfo;
   final String? error;
-  
+
   UnifiedImportResult({
     required this.success,
     this.filesImported = 0,
@@ -206,7 +205,7 @@ class ImportStrategyPreview {
   final int totalSize;
   final String strategyDescription;
   final String performanceDescription;
-  
+
   ImportStrategyPreview({
     required this.recommendedStrategy,
     required this.reasoning,
@@ -226,7 +225,7 @@ class ThermalStatus {
   final int color;
   final ProcessingConfig processingConfig;
   final bool isThrottling;
-  
+
   ThermalStatus({
     required this.state,
     required this.description,

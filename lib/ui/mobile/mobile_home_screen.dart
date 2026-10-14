@@ -49,6 +49,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   late final SettingsService _settingsService = SettingsService();
 
   // Use Unified Import Service with smart encryption strategy
+  // ignore: deprecated_member_use_from_same_package
   late final UnifiedImportService _unifiedImport = UnifiedImportService(
     enhancedRepo: _repo,
   );
@@ -68,7 +69,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   String _query = '';
 
   // Mobile-specific pagination - ultra lightweight
-  static const int _pageSize = 10; // Reduced from 20 to 10 for lighter memory usage
+  static const int _pageSize =
+      10; // Reduced from 20 to 10 for lighter memory usage
   int _currentPage = 0;
   bool _hasMoreFiles = true;
   bool _loadingMore = false;
@@ -96,7 +98,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text('Tap "Request Permissions" in menu for full storage access'),
+                content: const Text(
+                    'Tap "Request Permissions" in menu for full storage access'),
                 action: SnackBarAction(
                   label: 'Grant Now',
                   onPressed: _requestStoragePermissions,
@@ -124,7 +127,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       _selectedFolderIds.clear();
       _selectionMode = false;
     });
-    
+
     try {
       final folders = await _repo.listFolders(parentId: _currentFolderId);
       debugPrint('DEBUG: Found ${folders.length} folders');
@@ -136,7 +139,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         offset: 0,
       );
       debugPrint('DEBUG: Found ${files.length} files');
-      
+
       if (!mounted) return;
       setState(() {
         _folders = folders;
@@ -146,7 +149,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         _loading = false;
       });
       debugPrint('DEBUG: Mobile refresh completed successfully');
-      
     } catch (e) {
       debugPrint('DEBUG: Error during mobile refresh: $e');
       if (mounted) {
@@ -160,28 +162,29 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   Future<void> _loadMoreFiles() async {
     if (_loadingMore || !_hasMoreFiles) return;
-    
+
     setState(() => _loadingMore = true);
-    
+
     final nextPage = _currentPage + 1;
     final moreFiles = await _repo.listFiles(
       parentId: _currentFolderId,
       limit: _pageSize,
       offset: nextPage * _pageSize,
     );
-    
+
     if (!mounted) return;
     setState(() {
       _files.addAll(moreFiles);
       _currentPage = nextPage;
-      _hasMoreFiles = moreFiles.length >= _pageSize && _files.length < _totalFileCount;
+      _hasMoreFiles =
+          moreFiles.length >= _pageSize && _files.length < _totalFileCount;
       _loadingMore = false;
     });
   }
 
   Widget _buildMobileBreadcrumbs() {
     if (_folderStack.isEmpty) return const SizedBox.shrink();
-    
+
     return Container(
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -202,22 +205,26 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               label: const Text('Root'),
             );
           }
-          
+
           final folder = _folderStack[index - 1];
           final isLast = index == _folderStack.length;
-          
+
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.chevron_right, size: 16),
               TextButton(
-                onPressed: isLast ? null : () {
-                  setState(() {
-                    _folderStack.removeRange(index, _folderStack.length);
-                    _currentFolderId = _folderStack.isEmpty ? null : _folderStack.last.id;
-                  });
-                  _refresh();
-                },
+                onPressed: isLast
+                    ? null
+                    : () {
+                        setState(() {
+                          _folderStack.removeRange(index, _folderStack.length);
+                          _currentFolderId = _folderStack.isEmpty
+                              ? null
+                              : _folderStack.last.id;
+                        });
+                        _refresh();
+                      },
                 child: Text(
                   folder.name,
                   style: TextStyle(
@@ -246,7 +253,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     final q = _query.trim().toLowerCase();
     var items = _files;
     if (q.isNotEmpty) {
-      items = items.where((f) => f.originalName.toLowerCase().contains(q)).toList();
+      items =
+          items.where((f) => f.originalName.toLowerCase().contains(q)).toList();
     }
     // No sorting - preserve original order from database
     return items;
@@ -309,7 +317,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       } else {
         _selectedFileIds.add(file.id);
       }
-      _selectionMode = _selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
+      _selectionMode =
+          _selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
     });
   }
 
@@ -320,7 +329,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       } else {
         _selectedFolderIds.add(folder.id);
       }
-      _selectionMode = _selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
+      _selectionMode =
+          _selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty;
     });
   }
 
@@ -340,9 +350,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Selected Items'),
-        content: Text('Delete $totalSelected selected items?\n\nThis action cannot be undone.'),
+        content: Text(
+            'Delete $totalSelected selected items?\n\nThis action cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -399,7 +412,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.select_all),
-              title: Text(_selectedFileIds.contains(file.id) ? 'Deselect' : 'Select'),
+              title: Text(
+                  _selectedFileIds.contains(file.id) ? 'Deselect' : 'Select'),
               onTap: () {
                 Navigator.pop(context);
                 _toggleFileSelection(file);
@@ -437,7 +451,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.select_all),
-              title: Text(_selectedFolderIds.contains(folder.id) ? 'Deselect' : 'Select'),
+              title: Text(_selectedFolderIds.contains(folder.id)
+                  ? 'Deselect'
+                  : 'Select'),
               onTap: () {
                 Navigator.pop(context);
                 _toggleFolderSelection(folder);
@@ -460,7 +476,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   /// Open folder in Mihon manga reader
   Future<void> _openFolderInMihon(VaultFolder folder) async {
     if (!mounted) return;
-    
+
     // Show progress dialog
     showDialog(
       context: context,
@@ -471,7 +487,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         onComplete: (result) {
           Navigator.pop(context); // Close progress dialog
           if (result.success) {
-            _showMihonSuccessDialog(folder.name, result.tempFolderPath, result.mihonDetected, result.mihonAppName);
+            _showMihonSuccessDialog(folder.name, result.tempFolderPath,
+                result.mihonDetected, result.mihonAppName);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -493,7 +510,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  void _showMihonSuccessDialog(String folderName, String tempPath, bool mihonDetected, String? mihonAppName) {
+  void _showMihonSuccessDialog(String folderName, String tempPath,
+      bool mihonDetected, String? mihonAppName) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -513,19 +531,21 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              mihonDetected 
+              mihonDetected
                   ? 'Successfully opened "$folderName" in ${mihonAppName ?? 'Mihon'}!'
                   : 'Images exported for "$folderName"',
             ),
             const SizedBox(height: 16),
-            const Text('Temp folder location:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Temp folder location:',
+                style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: SelectableText(
                 tempPath,
@@ -537,14 +557,19 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withOpacity(0.3),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Theme.of(context).colorScheme.primary),
+                  border:
+                      Border.all(color: Theme.of(context).colorScheme.primary),
                 ),
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('📱 Next Steps:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('📱 Next Steps:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 8),
                     Text('1. Install Mihon from GitHub or F-Droid'),
                     Text('2. Open Mihon and navigate to the temp folder above'),
@@ -569,16 +594,17 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             onPressed: () async {
               final navigator = Navigator.of(context);
               final messenger = ScaffoldMessenger.of(context);
-              
+
               // Clean up temp folder
-              final success = await _androidManga.cleanupMangaReaderTemp(tempPath);
-              
+              final success =
+                  await _androidManga.cleanupMangaReaderTemp(tempPath);
+
               if (mounted) {
                 navigator.pop();
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text(success 
-                        ? 'Temp folder cleaned up successfully!' 
+                    content: Text(success
+                        ? 'Temp folder cleaned up successfully!'
                         : 'Failed to clean up temp folder'),
                     backgroundColor: success ? Colors.green : Colors.red,
                   ),
@@ -597,9 +623,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Folder'),
-        content: Text('Delete "${folder.name}" and all its contents?\n\nThis action cannot be undone.'),
+        content: Text(
+            'Delete "${folder.name}" and all its contents?\n\nThis action cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -633,9 +662,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete File'),
-        content: Text('Delete "${file.originalName}"?\n\nThis action cannot be undone.'),
+        content: Text(
+            'Delete "${file.originalName}"?\n\nThis action cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -665,7 +697,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   // Utility methods
-  
+
   /// Quick clear cache from top bar
   Future<void> _clearCacheQuick() async {
     try {
@@ -690,24 +722,25 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       await lifecycleService.performManualCleanup();
 
       if (!mounted) return;
-      
+
       // Close loading dialog
       Navigator.of(context).pop();
-      
+
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cache cleared successfully! All temporary files removed.'),
+          content:
+              Text('Cache cleared successfully! All temporary files removed.'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      
+
       // Close loading dialog if still open
       Navigator.of(context).pop();
-      
+
       // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -719,7 +752,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   // Import methods - Mobile implementations
-  
+
   /// Add new folder
   Future<void> _addFolder() async {
     final controller = TextEditingController();
@@ -733,7 +766,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           decoration: const InputDecoration(hintText: 'Folder name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
             child: const Text('Create'),
@@ -746,8 +781,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     if (trimmed.isEmpty) return;
 
     try {
-      debugPrint('DEBUG: Creating folder "$trimmed" in parent $_currentFolderId');
-      final folder = await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
+      debugPrint(
+          'DEBUG: Creating folder "$trimmed" in parent $_currentFolderId');
+      final folder =
+          await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
       debugPrint('DEBUG: Folder created with ID ${folder.id}');
       await _refresh();
       debugPrint('DEBUG: Refresh completed, folders count: ${_folders.length}');
@@ -782,7 +819,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
         return;
       }
 
@@ -810,7 +848,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               Text('To import an entire folder with all its content:'),
               SizedBox(height: 12),
               Text('1. Navigate to the folder you want to import'),
-              Text('2. Select ALL files in that folder (use Ctrl+A or select all)'),
+              Text(
+                  '2. Select ALL files in that folder (use Ctrl+A or select all)'),
               Text('3. The app will organize them into a folder structure'),
               SizedBox(height: 12),
               Text(
@@ -820,7 +859,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Continue'),
@@ -837,11 +878,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         allowMultiple: true,
         dialogTitle: 'Select ALL files from the folder you want to import',
       );
-      
+
       if (result == null || result.files.isEmpty) return;
 
       if (!mounted) return;
-      
+
       // Show progress dialog
       showDialog(
         context: context,
@@ -856,7 +897,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           },
         ),
       );
-
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -869,7 +909,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   Future<void> _importZip() async {
     try {
       final messenger = ScaffoldMessenger.of(context);
-      
+
       // Pick ZIP or vault file with enhanced Android support
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
@@ -880,10 +920,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       if (result == null || result.files.isEmpty) return;
 
       final pickedFile = result.files.first;
-      
+
       // Show loading while we prepare the file
-      messenger.showSnackBar(const SnackBar(content: Text('Preparing file...')));
-      
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Preparing file...')));
+
       try {
         // Handle regular ZIP import with SAF for Android 15+ compatibility
         if (!mounted) return;
@@ -914,9 +955,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel')),
               FilledButton(
-                onPressed: () => Navigator.pop(context, passwordController.text),
+                onPressed: () =>
+                    Navigator.pop(context, passwordController.text),
                 child: const Text('Import'),
               ),
             ],
@@ -926,17 +970,18 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         if (password == null) return; // User cancelled
 
         if (!mounted) return;
-        messenger.showSnackBar(const SnackBar(content: Text('Importing ZIP via SAF...')));
+        messenger.showSnackBar(
+            const SnackBar(content: Text('Importing ZIP via SAF...')));
 
         try {
           // Try SAF approach first (Android 15+ compatible)
           if (Platform.isAndroid && pickedFile.path != null) {
             // Convert file path to content URI for SAF
             final fileUri = Uri.file(pickedFile.path!);
-            
+
             if (!mounted) return;
             messenger.hideCurrentSnackBar();
-            
+
             // Show progress dialog
             showDialog(
               context: context,
@@ -954,26 +999,28 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             );
             return;
           }
-          
+
           // Fallback to traditional approach for other platforms or if SAF fails
           throw Exception('SAF not available, using fallback method');
-          
         } catch (safError) {
           debugPrint('SAF import failed, trying fallback: $safError');
-          
+
           // Fallback to enhanced file handling approach
           String? workingFilePath;
-          
+
           if (pickedFile.bytes != null && pickedFile.bytes!.isNotEmpty) {
             // Use bytes if available (most reliable on Android)
             final appDir = await getApplicationCacheDirectory();
-            final importId = Random().nextInt(999999).toString().padLeft(6, '0');
-            final tempDir = Directory(path.join(appDir.path, 'local_vault_zip_$importId'));
+            final importId =
+                Random().nextInt(999999).toString().padLeft(6, '0');
+            final tempDir =
+                Directory(path.join(appDir.path, 'local_vault_zip_$importId'));
             await tempDir.create(recursive: true);
             final tempFile = File(path.join(tempDir.path, pickedFile.name));
             await tempFile.writeAsBytes(pickedFile.bytes!);
             workingFilePath = tempFile.path;
-            debugPrint('Using file bytes approach: ${pickedFile.bytes!.length} bytes');
+            debugPrint(
+                'Using file bytes approach: ${pickedFile.bytes!.length} bytes');
           } else {
             final filePath = pickedFile.path;
             if (filePath != null) {
@@ -985,20 +1032,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               } else {
                 // Copy to app directory for reliable access
                 final appDir = await getApplicationCacheDirectory();
-                final importId = Random().nextInt(999999).toString().padLeft(6, '0');
-                final tempDir = Directory(path.join(appDir.path, 'local_vault_zip_$importId'));
+                final importId =
+                    Random().nextInt(999999).toString().padLeft(6, '0');
+                final tempDir = Directory(
+                    path.join(appDir.path, 'local_vault_zip_$importId'));
                 await tempDir.create(recursive: true);
                 final tempFile = File(path.join(tempDir.path, pickedFile.name));
-                
+
                 // Try to read and copy the file
                 try {
                   final bytes = await sourceFile.readAsBytes();
                   await tempFile.writeAsBytes(bytes);
                   workingFilePath = tempFile.path;
-                  debugPrint('Using copy approach: copied ${bytes.length} bytes');
+                  debugPrint(
+                      'Using copy approach: copied ${bytes.length} bytes');
                 } catch (e) {
                   debugPrint('Failed to copy file: $e');
-                  throw Exception('Unable to access the selected file. Please try again or select a different file.');
+                  throw Exception(
+                      'Unable to access the selected file. Please try again or select a different file.');
                 }
               }
             } else {
@@ -1018,14 +1069,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               // Could show status updates here if needed
             },
           );
-          
+
           if (!mounted) return;
           messenger.hideCurrentSnackBar();
-          
+
           if (result.success) {
             messenger.showSnackBar(
               SnackBar(
-                content: Text('Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders using ${result.strategy}'),
+                content: Text(
+                    'Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders using ${result.strategy}'),
                 backgroundColor: Colors.green,
               ),
             );
@@ -1037,16 +1089,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               ),
             );
           }
-          
+
           await _refresh();
         }
-        
       } catch (e) {
         if (!mounted) return;
         messenger.hideCurrentSnackBar();
-        
+
         String errorMessage = SafZipImportService.getSafErrorMessage(e);
-        
+
         messenger.showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -1055,7 +1106,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           ),
         );
       }
-      
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1075,13 +1125,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   Future<void> _showTempFolderSettings() async {
     try {
       // Get current temp folder location
-      final currentLocation = await _androidManga.getCurrentTempFolderLocation();
-      
+      final currentLocation =
+          await _androidManga.getCurrentTempFolderLocation();
+
       // Get available options
       final options = await _androidManga.getAvailableTempFolderLocations();
-      
+
       if (!mounted) return;
-      
+
       final selectedOption = await showDialog<TempFolderOption>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1090,7 +1141,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Choose where to create temp folders for manga reading:'),
+              const Text(
+                  'Choose where to create temp folders for manga reading:'),
               const SizedBox(height: 16),
               Text(
                 'Current: $currentLocation',
@@ -1100,23 +1152,28 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               const Text('Available locations:'),
               const SizedBox(height: 8),
               ...options.map((option) => ListTile(
-                title: Text(option.name),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(option.path, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                    Text(option.description, style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
-                leading: option.isRecommended 
-                    ? const Icon(Icons.star, color: Colors.orange)
-                    : const Icon(Icons.folder),
-                onTap: () => Navigator.pop(context, option),
-              )),
+                    title: Text(option.name),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(option.path,
+                            style: const TextStyle(
+                                fontFamily: 'monospace', fontSize: 12)),
+                        Text(option.description,
+                            style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                    leading: option.isRecommended
+                        ? const Icon(Icons.star, color: Colors.orange)
+                        : const Icon(Icons.folder),
+                    onTap: () => Navigator.pop(context, option),
+                  )),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
           ],
         ),
       );
@@ -1128,11 +1185,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         const SnackBar(content: Text('Setting temp folder location...')),
       );
 
-      final success = await _androidManga.setCustomTempFolderLocation(selectedOption.path);
-      
+      final success =
+          await _androidManga.setCustomTempFolderLocation(selectedOption.path);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      
+
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1160,9 +1218,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   Future<void> _requestStoragePermissions() async {
     try {
       final result = await _androidManga.requestAllStoragePermissions();
-      
+
       if (!mounted) return;
-      
+
       if (result.granted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1195,7 +1253,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   const SizedBox(height: 16),
                   const Text(
                     'Please enable "All files access" in Settings.',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.orange),
                   ),
                 ],
               ],
@@ -1238,14 +1297,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: _folderStack.isEmpty,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         await _popFolder();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_folderStack.isEmpty ? 'Local Vault' : _folderStack.last.name),
-          leading: _selectionMode 
+          title: Text(
+              _folderStack.isEmpty ? 'Local Vault' : _folderStack.last.name),
+          leading: _selectionMode
               ? IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: _clearSelection,
@@ -1261,7 +1321,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 icon: const Icon(Icons.select_all),
                 onPressed: () {
                   setState(() {
-                    if (_selectedFileIds.length == _visibleFiles.length && 
+                    if (_selectedFileIds.length == _visibleFiles.length &&
                         _selectedFolderIds.length == _visibleFolders.length) {
                       // Deselect all
                       _clearSelection();
@@ -1270,7 +1330,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       _selectedFileIds.clear();
                       _selectedFolderIds.clear();
                       _selectedFileIds.addAll(_visibleFiles.map((f) => f.id));
-                      _selectedFolderIds.addAll(_visibleFolders.map((f) => f.id));
+                      _selectedFolderIds
+                          .addAll(_visibleFolders.map((f) => f.id));
                     }
                   });
                 },
@@ -1296,7 +1357,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 icon: const Icon(Icons.search),
                 onPressed: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => GlobalSearchScreen(repo: _repo)),
+                    MaterialPageRoute(
+                        builder: (_) => GlobalSearchScreen(repo: _repo)),
                   );
                 },
                 tooltip: 'Search',
@@ -1312,7 +1374,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       break;
                     case 'export_all':
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Export not yet implemented on mobile')),
+                        const SnackBar(
+                            content:
+                                Text('Export not yet implemented on mobile')),
                       );
                       break;
                     case 'temp_folder_settings':
@@ -1323,7 +1387,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       break;
                     case 'settings':
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
                       );
                       break;
                     case 'lock':
@@ -1411,7 +1476,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     // Breadcrumbs
                     if (_folderStack.isNotEmpty)
                       SliverToBoxAdapter(child: _buildMobileBreadcrumbs()),
-                    
+
                     // Search filter
                     if (_query.isNotEmpty)
                       SliverToBoxAdapter(
@@ -1423,16 +1488,20 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           ),
                         ),
                       ),
-                    
+
                     // Folders - Lightweight list
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final folder = _visibleFolders[index];
-                          final isSelected = _selectedFolderIds.contains(folder.id);
+                          final isSelected =
+                              _selectedFolderIds.contains(folder.id);
                           return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : null,
                             child: ListTile(
                               dense: true,
                               leading: Row(
@@ -1441,7 +1510,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                   if (_selectionMode)
                                     Checkbox(
                                       value: isSelected,
-                                      onChanged: (_) => _toggleFolderSelection(folder),
+                                      onChanged: (_) =>
+                                          _toggleFolderSelection(folder),
                                     )
                                   else
                                     const Icon(Icons.folder, size: 20),
@@ -1451,17 +1521,19 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 folder.name,
                                 style: const TextStyle(fontSize: 14),
                               ),
-                              trailing: _selectionMode 
-                                  ? null 
+                              trailing: _selectionMode
+                                  ? null
                                   : IconButton(
-                                      icon: const Icon(Icons.more_vert, size: 16),
-                                      onPressed: () => _showFolderOptions(folder),
+                                      icon:
+                                          const Icon(Icons.more_vert, size: 16),
+                                      onPressed: () =>
+                                          _showFolderOptions(folder),
                                     ),
-                              onTap: _selectionMode 
+                              onTap: _selectionMode
                                   ? () => _toggleFolderSelection(folder)
                                   : () => _openFolder(folder),
-                              onLongPress: _selectionMode 
-                                  ? null 
+                              onLongPress: _selectionMode
+                                  ? null
                                   : () => _toggleFolderSelection(folder),
                             ),
                           );
@@ -1469,7 +1541,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         childCount: _visibleFolders.length,
                       ),
                     ),
-                    
+
                     // Files - Lightweight list view optimized for Android
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
@@ -1478,8 +1550,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           final isImg = isImageFileName(file.originalName);
                           final isSelected = _selectedFileIds.contains(file.id);
                           return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : null,
                             child: ListTile(
                               dense: true, // Compact layout for mobile
                               leading: Row(
@@ -1488,11 +1563,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                   if (_selectionMode)
                                     Checkbox(
                                       value: isSelected,
-                                      onChanged: (_) => _toggleFileSelection(file),
+                                      onChanged: (_) =>
+                                          _toggleFileSelection(file),
                                     )
                                   else
                                     Icon(
-                                      isImg ? Icons.image : Icons.insert_drive_file,
+                                      isImg
+                                          ? Icons.image
+                                          : Icons.insert_drive_file,
                                       size: 20, // Smaller icons for performance
                                     ),
                                 ],
@@ -1507,17 +1585,18 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 formatBytes(file.byteSize),
                                 style: const TextStyle(fontSize: 12),
                               ),
-                              trailing: _selectionMode 
-                                  ? null 
+                              trailing: _selectionMode
+                                  ? null
                                   : IconButton(
-                                      icon: const Icon(Icons.more_vert, size: 16),
+                                      icon:
+                                          const Icon(Icons.more_vert, size: 16),
                                       onPressed: () => _showFileOptions(file),
                                     ),
-                              onTap: _selectionMode 
+                              onTap: _selectionMode
                                   ? () => _toggleFileSelection(file)
                                   : () => _openFile(file),
-                              onLongPress: _selectionMode 
-                                  ? null 
+                              onLongPress: _selectionMode
+                                  ? null
                                   : () => _toggleFileSelection(file),
                             ),
                           );
@@ -1525,7 +1604,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         childCount: _visibleFiles.length,
                       ),
                     ),
-                    
+
                     // Load more button
                     if (_hasMoreFiles && !_loading)
                       SliverToBoxAdapter(
@@ -1537,20 +1616,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 : FilledButton.icon(
                                     onPressed: _loadMoreFiles,
                                     icon: const Icon(Icons.expand_more),
-                                    label: Text('Load more (${_totalFileCount - _files.length} remaining)'),
+                                    label: Text(
+                                        'Load more (${_totalFileCount - _files.length} remaining)'),
                                   ),
                           ),
                         ),
                       ),
-                    
+
                     // Empty state
-                    if (_visibleFolders.isEmpty && _visibleFiles.isEmpty && !_loading)
+                    if (_visibleFolders.isEmpty &&
+                        _visibleFiles.isEmpty &&
+                        !_loading)
                       const SliverToBoxAdapter(
                         child: Padding(
                           padding: EdgeInsets.all(24),
                           child: Column(
                             children: [
-                              Icon(Icons.folder_open, size: 64, color: Colors.grey),
+                              Icon(Icons.folder_open,
+                                  size: 64, color: Colors.grey),
                               SizedBox(height: 16),
                               Text('No items found'),
                               SizedBox(height: 8),
@@ -1585,10 +1668,12 @@ class _FolderImportProgressDialog extends StatefulWidget {
   });
 
   @override
-  State<_FolderImportProgressDialog> createState() => _FolderImportProgressDialogState();
+  State<_FolderImportProgressDialog> createState() =>
+      _FolderImportProgressDialogState();
 }
 
-class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog> {
+class _FolderImportProgressDialogState
+    extends State<_FolderImportProgressDialog> {
   String _status = 'Starting import...';
   int _processed = 0;
   int _imported = 0;
@@ -1607,11 +1692,11 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
 
       // Group files by their directory structure
       final Map<String, List<PlatformFile>> folderGroups = {};
-      
+
       for (final file in widget.files) {
         // Extract folder name from file path or use a default
         String folderName = 'Imported_Folder';
-        
+
         if (file.path != null) {
           final pathParts = file.path!.split(Platform.pathSeparator);
           if (pathParts.length > 1) {
@@ -1619,7 +1704,7 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
             folderName = pathParts[pathParts.length - 2];
           }
         }
-        
+
         folderGroups.putIfAbsent(folderName, () => []).add(file);
       }
 
@@ -1642,7 +1727,7 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
         const batchSize = 2; // Process 2 files at a time
         for (int i = 0; i < files.length; i += batchSize) {
           final batch = files.skip(i).take(batchSize).toList();
-          
+
           // Process batch
           for (final file in batch) {
             try {
@@ -1657,18 +1742,19 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
             } catch (e) {
               debugPrint('Failed to import ${file.name}: $e');
             }
-            
+
             _processed++;
-            
+
             // Update UI more frequently but not on every file
             if (_processed % 1 == 0 || _processed == totalFiles) {
-              setState(() => _status = 'Imported ${file.name} ($_processed/$totalFiles)');
+              setState(() =>
+                  _status = 'Imported ${file.name} ($_processed/$totalFiles)');
             }
           }
-          
+
           // Yield to UI thread after each batch to prevent blocking
           await Future.delayed(const Duration(milliseconds: 10));
-          
+
           // Allow UI to update
           if (mounted) {
             setState(() {});
@@ -1677,26 +1763,26 @@ class _FolderImportProgressDialogState extends State<_FolderImportProgressDialog
       }
 
       setState(() {
-        _status = 'Import completed! Imported $_imported files into ${folderGroups.length} folders.';
+        _status =
+            'Import completed! Imported $_imported files into ${folderGroups.length} folders.';
         _isComplete = true;
       });
 
       // Show success message in the dialog itself, no need for snackbar
       await Future.delayed(const Duration(seconds: 1));
-      
+
       if (mounted) {
         widget.onComplete();
       }
-
     } catch (e) {
       if (mounted) {
         setState(() {
           _status = 'Import failed: $e';
           _isComplete = true;
         });
-        
+
         await Future.delayed(const Duration(seconds: 2));
-        
+
         // Don't show snackbar to avoid BuildContext issues
       }
     }
@@ -1755,10 +1841,12 @@ class _EnhancedFolderImportDialog extends StatefulWidget {
   });
 
   @override
-  State<_EnhancedFolderImportDialog> createState() => _EnhancedFolderImportDialogState();
+  State<_EnhancedFolderImportDialog> createState() =>
+      _EnhancedFolderImportDialogState();
 }
 
-class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog> {
+class _EnhancedFolderImportDialogState
+    extends State<_EnhancedFolderImportDialog> {
   String _status = 'Analyzing files for optimal encryption strategy...';
   String _strategy = '';
   double _progress = 0.0;
@@ -1775,7 +1863,8 @@ class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog
   Future<void> _performEnhancedImport() async {
     try {
       final totalFiles = widget.files.length;
-      setState(() => _status = 'Preparing $totalFiles files for smart import...');
+      setState(
+          () => _status = 'Preparing $totalFiles files for smart import...');
 
       // Convert PlatformFile to File objects
       final sourceFiles = <File>[];
@@ -1830,8 +1919,8 @@ class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog
           _filesImported = result.filesImported ?? 0;
           _foldersCreated = result.foldersCreated ?? 0;
           _strategy = result.strategy ?? 'Unknown';
-          _status = result.success 
-              ? 'Import completed successfully!' 
+          _status = result.success
+              ? 'Import completed successfully!'
               : 'Import failed: ${result.error}';
         });
       }
@@ -1843,7 +1932,6 @@ class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog
           widget.onComplete();
         }
       }
-
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -1867,7 +1955,8 @@ class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog
             Text(_status),
             const SizedBox(height: 16),
             if (_strategy.isNotEmpty) ...[
-              Text('Strategy: $_strategy', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('Strategy: $_strategy',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 8),
             ],
             if (!_isComplete) ...[
@@ -1894,7 +1983,6 @@ class _EnhancedFolderImportDialogState extends State<_EnhancedFolderImportDialog
   }
 }
 
-
 // ZIP Import Progress Dialog with time estimation
 class _ZipImportProgressDialog extends StatefulWidget {
   final Uri zipUri;
@@ -1912,7 +2000,8 @@ class _ZipImportProgressDialog extends StatefulWidget {
   });
 
   @override
-  State<_ZipImportProgressDialog> createState() => _ZipImportProgressDialogState();
+  State<_ZipImportProgressDialog> createState() =>
+      _ZipImportProgressDialogState();
 }
 
 class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
@@ -1924,7 +2013,7 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
   bool _isComplete = false;
   String? _errorMessage;
   bool _cancelled = false;
-  
+
   // Debug info
   final List<String> _debugLog = [];
   int _extractedCount = 0;
@@ -1941,7 +2030,7 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
   Future<void> _startImport() async {
     try {
       final safImportService = SafZipImportService(repo: widget.repo);
-      
+
       final result = await safImportService.importFromZipUri(
         zipUri: widget.zipUri,
         password: widget.password,
@@ -1953,7 +2042,9 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
               _filesProcessed = current;
               _totalFiles = total;
               // Truncate filename to prevent memory issues
-              _currentFile = filename.length > 40 ? '${filename.substring(0, 40)}...' : filename;
+              _currentFile = filename.length > 40
+                  ? '${filename.substring(0, 40)}...'
+                  : filename;
             });
           }
         },
@@ -1962,12 +2053,13 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
           if (mounted) {
             setState(() {
               // Truncate status to prevent memory issues
-              _statusMessage = status.length > 50 ? '${status.substring(0, 50)}...' : status;
-              
+              _statusMessage =
+                  status.length > 50 ? '${status.substring(0, 50)}...' : status;
+
               // Track debug info
               _debugLog.add(status);
               if (_debugLog.length > 10) _debugLog.removeAt(0); // Keep last 10
-              
+
               // Parse status for counts using structured format
               if (status.startsWith('EXTRACTED:')) {
                 final match = RegExp(r'(\d+)').firstMatch(status);
@@ -1987,18 +2079,20 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
           if (mounted) {
             setState(() {
               _isComplete = true;
-              _statusMessage = 'Import completed! Imported ${result.filesImported} files and ${result.foldersCreated} folders.';
+              _statusMessage =
+                  'Import completed! Imported ${result.filesImported} files and ${result.foldersCreated} folders.';
             });
           }
         },
       );
 
       if (_cancelled) return;
-      
+
       if (mounted) {
         setState(() {
           _isComplete = true;
-          _statusMessage = 'Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders!';
+          _statusMessage =
+              'Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders!';
         });
       }
     } catch (e) {
@@ -2027,15 +2121,17 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
   Widget build(BuildContext context) {
     final progress = _totalFiles > 0 ? _filesProcessed / _totalFiles : 0.0;
     final progressPercent = (progress * 100).toInt();
-    
+
     // Calculate time estimation
     String timeEstimate = '';
     if (_startTime != null && _filesProcessed > 0 && !_isComplete) {
       final elapsed = DateTime.now().difference(_startTime!);
       final avgTimePerFile = elapsed.inMilliseconds / _filesProcessed;
       final remainingFiles = _totalFiles - _filesProcessed;
-      final estimatedRemaining = Duration(milliseconds: (avgTimePerFile * remainingFiles).round());
-      timeEstimate = 'Est. time remaining: ${_formatDuration(estimatedRemaining)}';
+      final estimatedRemaining =
+          Duration(milliseconds: (avgTimePerFile * remainingFiles).round());
+      timeEstimate =
+          'Est. time remaining: ${_formatDuration(estimatedRemaining)}';
     }
 
     return AlertDialog(
@@ -2048,18 +2144,21 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
             if (!_isComplete) ...[
               LinearProgressIndicator(value: progress),
               const SizedBox(height: 16),
-              Text('Progress: $_filesProcessed / $_totalFiles files ($progressPercent%)'),
+              Text(
+                  'Progress: $_filesProcessed / $_totalFiles files ($progressPercent%)'),
               if (_currentFile.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text('Current: $_currentFile', style: const TextStyle(fontSize: 12)),
+                Text('Current: $_currentFile',
+                    style: const TextStyle(fontSize: 12)),
               ],
               if (timeEstimate.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text(timeEstimate, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(timeEstimate,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
               ],
               const SizedBox(height: 16),
               Text(_statusMessage, style: const TextStyle(fontSize: 12)),
-              
+
               // DEBUG INFO
               const SizedBox(height: 16),
               Container(
@@ -2071,16 +2170,27 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('DEBUG INFO:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
-                    Text('Extracted: $_extractedCount', style: const TextStyle(fontSize: 10)),
-                    Text('Encrypted: $_encryptedCount', style: const TextStyle(fontSize: 10)),
-                    Text('Saved to DB: $_savedCount', style: const TextStyle(fontSize: 10)),
+                    const Text('DEBUG INFO:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 10)),
+                    Text('Extracted: $_extractedCount',
+                        style: const TextStyle(fontSize: 10)),
+                    Text('Encrypted: $_encryptedCount',
+                        style: const TextStyle(fontSize: 10)),
+                    Text('Saved to DB: $_savedCount',
+                        style: const TextStyle(fontSize: 10)),
                     const SizedBox(height: 4),
-                    const Text('Recent logs:', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-                    ..._debugLog.take(_debugLog.length > 5 ? 5 : _debugLog.length).map((log) => Text(
-                      log.length > 60 ? '${log.substring(0, 60)}...' : log,
-                      style: const TextStyle(fontSize: 8),
-                    )),
+                    const Text('Recent logs:',
+                        style: TextStyle(
+                            fontSize: 9, fontWeight: FontWeight.bold)),
+                    ..._debugLog
+                        .take(_debugLog.length > 5 ? 5 : _debugLog.length)
+                        .map((log) => Text(
+                              log.length > 60
+                                  ? '${log.substring(0, 60)}...'
+                                  : log,
+                              style: const TextStyle(fontSize: 8),
+                            )),
                   ],
                 ),
               ),
@@ -2093,7 +2203,7 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
                 const Icon(Icons.check_circle, color: Colors.green, size: 48),
                 const SizedBox(height: 16),
                 Text(_statusMessage),
-                
+
                 // DEBUG INFO for completed import
                 const SizedBox(height: 16),
                 Container(
@@ -2105,10 +2215,15 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('FINAL COUNTS:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
-                      Text('Extracted: $_extractedCount', style: const TextStyle(fontSize: 10)),
-                      Text('Encrypted: $_encryptedCount', style: const TextStyle(fontSize: 10)),
-                      Text('Saved to DB: $_savedCount', style: const TextStyle(fontSize: 10)),
+                      const Text('FINAL COUNTS:',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 10)),
+                      Text('Extracted: $_extractedCount',
+                          style: const TextStyle(fontSize: 10)),
+                      Text('Encrypted: $_encryptedCount',
+                          style: const TextStyle(fontSize: 10)),
+                      Text('Saved to DB: $_savedCount',
+                          style: const TextStyle(fontSize: 10)),
                     ],
                   ),
                 ),
@@ -2137,7 +2252,6 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
     );
   }
 }
-
 
 /// Mihon progress dialog for Android
 class _MihonProgressDialog extends StatefulWidget {
@@ -2185,10 +2299,10 @@ class _MihonProgressDialogState extends State<_MihonProgressDialog> {
           _isComplete = true;
           _currentStatus = 'Export completed successfully!';
         });
-        
+
         // Wait a moment to show completion, then call callback
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         if (mounted) {
           widget.onComplete(result);
         }
@@ -2199,10 +2313,10 @@ class _MihonProgressDialogState extends State<_MihonProgressDialog> {
           _isComplete = true;
           _currentStatus = 'Export failed: $e';
         });
-        
+
         // Wait a moment to show error, then call callback
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         if (mounted) {
           widget.onError(e.toString());
         }
@@ -2230,7 +2344,9 @@ class _MihonProgressDialogState extends State<_MihonProgressDialog> {
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ] else ...[
-              const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+              const Center(
+                  child:
+                      Icon(Icons.check_circle, color: Colors.green, size: 48)),
               const SizedBox(height: 16),
               Text(_currentStatus),
             ],

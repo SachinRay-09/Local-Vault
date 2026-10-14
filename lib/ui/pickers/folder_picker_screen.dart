@@ -61,7 +61,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: _stack.isEmpty,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         await _pop();
       },
@@ -107,4 +107,3 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     );
   }
 }
-

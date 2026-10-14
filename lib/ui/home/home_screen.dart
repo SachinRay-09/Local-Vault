@@ -109,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _clearAllCaches() {
     // Clear image cache immediately to prevent memory buildup
     PaintingBinding.instance.imageCache.clear();
-    
+
     // DO NOT clear _files and _folders here - it breaks the app functionality!
     // Only clear image cache for memory management
   }
@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedFileIds.clear();
       _selectedFolderIds.clear();
     });
-    
+
     try {
       final folders = await _repo.listFolders(parentId: _currentFolderId);
       debugPrint('DEBUG: Found ${folders.length} folders');
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
         offset: 0,
       );
       debugPrint('DEBUG: Found ${files.length} files');
-      
+
       if (!mounted) return;
       setState(() {
         _folders = folders;
@@ -149,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
       debugPrint('DEBUG: Refresh completed successfully');
-      
+
       // Only clear image cache after successful data load, not before
       PaintingBinding.instance.imageCache.clear();
     } catch (e) {
@@ -165,24 +165,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadMoreFiles() async {
     if (_loadingMore || !_hasMoreFiles) return;
-    
+
     setState(() => _loadingMore = true);
-    
+
     final nextPage = _currentPage + 1;
     final moreFiles = await _repo.listFiles(
       parentId: _currentFolderId,
       limit: _pageSize,
       offset: nextPage * _pageSize,
     );
-    
+
     if (!mounted) return;
     setState(() {
       _files.addAll(moreFiles);
       _currentPage = nextPage;
-      _hasMoreFiles = moreFiles.length >= _pageSize && _files.length < _totalFileCount;
+      _hasMoreFiles =
+          moreFiles.length >= _pageSize && _files.length < _totalFileCount;
       _loadingMore = false;
     });
-    
+
     // Only clear image cache, not data
     PaintingBinding.instance.imageCache.clear();
   }
@@ -209,7 +210,8 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: () {
             setState(() {
               _folderStack.removeRange(i + 1, _folderStack.length);
-              _currentFolderId = _folderStack.isEmpty ? null : _folderStack.last.id;
+              _currentFolderId =
+                  _folderStack.isEmpty ? null : _folderStack.last.id;
             });
             _refresh();
           },
@@ -239,7 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final q = _query.trim().toLowerCase();
     var items = _files;
     if (q.isNotEmpty) {
-      items = items.where((f) => f.originalName.toLowerCase().contains(q)).toList();
+      items =
+          items.where((f) => f.originalName.toLowerCase().contains(q)).toList();
     }
 
     // Only sort if user explicitly chose date or size
@@ -315,24 +318,25 @@ class _HomeScreenState extends State<HomeScreen> {
       await lifecycleService.performManualCleanup();
 
       if (!mounted) return;
-      
+
       // Close loading dialog
       Navigator.of(context).pop();
-      
+
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cache cleared successfully! All temporary files removed.'),
+          content:
+              Text('Cache cleared successfully! All temporary files removed.'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      
+
       // Close loading dialog if still open
       Navigator.of(context).pop();
-      
+
       // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -355,7 +359,9 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: const InputDecoration(hintText: 'Folder name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
             child: const Text('Create'),
@@ -368,8 +374,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (trimmed.isEmpty) return;
 
     try {
-      debugPrint('DEBUG: Creating folder "$trimmed" in parent $_currentFolderId');
-      final folder = await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
+      debugPrint(
+          'DEBUG: Creating folder "$trimmed" in parent $_currentFolderId');
+      final folder =
+          await _repo.createFolder(name: trimmed, parentId: _currentFolderId);
       debugPrint('DEBUG: Folder created with ID ${folder.id}');
       await _refresh();
       debugPrint('DEBUG: Refresh completed, folders count: ${_folders.length}');
@@ -418,7 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return;
-      
+
       final outPath = await _importExport.pickExportPath();
       if (outPath == null || outPath.trim().isEmpty) return;
 
@@ -461,20 +469,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveToLocalGallery() async {
     try {
       debugPrint('Starting Save to Local Gallery...');
-      
+
       if (!mounted) return;
-      
+
       String? outPath;
-      
+
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         // Desktop: Let user choose location
         outPath = await FilePicker.platform.saveFile(
           dialogTitle: 'Save to Local Gallery',
-          fileName: 'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip',
+          fileName:
+              'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip',
           type: FileType.custom,
           allowedExtensions: ['zip'],
         );
-        
+
         if (outPath == null) {
           debugPrint('User cancelled file picker');
           return; // User cancelled
@@ -482,7 +491,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         // Android: Save to Downloads folder
         const downloadsPath = '/storage/emulated/0/Download';
-        final fileName = 'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip';
+        final fileName =
+            'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip';
         outPath = '$downloadsPath/$fileName';
         debugPrint('Android: Saving to $outPath');
       }
@@ -523,7 +533,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Show gallery save success dialog
   void _showGallerySaveSuccessDialog(ExportAllResult result) {
     if (!mounted) return;
-    
+
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -538,7 +548,8 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('All vault content has been saved as an unencrypted ZIP file.'),
+            const Text(
+                'All vault content has been saved as an unencrypted ZIP file.'),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -554,7 +565,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Icon(Icons.info_outline, color: Colors.blue, size: 20),
                       SizedBox(width: 8),
-                      Text('File Location:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('File Location:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -580,7 +592,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Icon(Icons.warning_amber, color: Colors.orange, size: 20),
                       SizedBox(width: 8),
-                      Text('Not Encrypted:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('Not Encrypted:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ],
                   ),
                   SizedBox(height: 8),
@@ -606,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Show export success dialog
   void _showExportSuccessDialog(ExportAllResult result, bool usePassword) {
     if (!mounted) return;
-    
+
     if (usePassword) {
       // Show password dialog
       showDialog<void>(
@@ -625,7 +638,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text('ZIP file saved successfully!'),
               const SizedBox(height: 16),
-              const Text('File location:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('File location:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               SelectableText(
                 result.zipPath,
@@ -646,13 +660,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Icon(Icons.key, color: Colors.amber, size: 20),
                         SizedBox(width: 8),
-                        Text('Password:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Password:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
                       result.password,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -694,7 +712,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text('ZIP file saved successfully!'),
               const SizedBox(height: 16),
-              const Text('File location:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('File location:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               SelectableText(
                 result.zipPath,
@@ -715,11 +734,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Icon(Icons.info, color: Colors.green, size: 20),
                         SizedBox(width: 8),
-                        Text('No Password', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('No Password',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
                     SizedBox(height: 4),
-                    Text('This ZIP can be imported on Android without password.'),
+                    Text(
+                        'This ZIP can be imported on Android without password.'),
                   ],
                 ),
               ),
@@ -738,6 +759,47 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _importZip() async {
     final messenger = ScaffoldMessenger.of(context);
+
+    // Show recommendation dialog first
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Import ZIP'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Recommended Method:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text('1. Extract the ZIP file using File Explorer'),
+            Text('2. Use "Import Folder" from the menu'),
+            SizedBox(height: 16),
+            Text(
+              'This is more reliable and uses less memory.',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+            SizedBox(height: 16),
+            Text('Do you still want to try importing the ZIP directly?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue with ZIP'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldContinue != true) return;
+
     final zipPath = await _importExport.pickImportZipPath();
     if (zipPath == null || zipPath.trim().isEmpty) return;
     if (!mounted) return;
@@ -746,14 +808,26 @@ class _HomeScreenState extends State<HomeScreen> {
     final password = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Import vault'),
-        content: TextField(
-          controller: passwordController,
-          decoration: const InputDecoration(labelText: 'ZIP password'),
-          autofocus: true,
+        title: const Text('Import ZIP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: passwordController,
+              decoration: const InputDecoration(
+                labelText: 'ZIP password (if encrypted)',
+                hintText: 'Leave empty if not password protected',
+              ),
+              autofocus: true,
+              obscureText: true,
+            ),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, passwordController.text),
             child: const Text('Import'),
@@ -762,8 +836,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    final pw = (password ?? '').trim();
-    if (pw.isEmpty) return;
+    if (password == null) return; // User cancelled
+
+    final pw = password.trim();
 
     if (!mounted) return;
     messenger.showSnackBar(const SnackBar(content: Text('Importing...')));
@@ -777,13 +852,21 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
-        SnackBar(content: Text('Imported ${res.filesImported} files, ${res.foldersCreated} folders')),
+        SnackBar(
+            content: Text(
+                'Imported ${res.filesImported} files, ${res.foldersCreated} folders')),
       );
       await _refresh();
     } catch (e) {
       if (!mounted) return;
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+              'Import failed: $e\n\nTry extracting the ZIP first, then use Import Folder.'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 
@@ -797,7 +880,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<bool> _popFolder() async {
     if (_folderStack.isEmpty) return true;
-    
+
     setState(() {
       _folderStack.removeLast();
       _currentFolderId = _folderStack.isEmpty ? null : _folderStack.last.id;
@@ -817,12 +900,14 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     if (isVideoFileName(file.originalName)) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => VideoViewerScreen(file: file)));
+      Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => VideoViewerScreen(file: file)));
       return;
     }
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Opening ${file.originalName}...')));
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Opening ${file.originalName}...')));
     try {
       await _openService.decryptToTempAndOpen(file);
       if (!mounted) return;
@@ -830,7 +915,8 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Open failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Open failed: $e')));
     }
   }
 
@@ -838,7 +924,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // Use directory picker (Windows only for now)
     if (!Platform.isWindows) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Folder import is currently only supported on Windows')),
+        const SnackBar(
+            content:
+                Text('Folder import is currently only supported on Windows')),
       );
       return;
     }
@@ -853,7 +941,8 @@ class _HomeScreenState extends State<HomeScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Enter the full path to the folder containing images:'),
+              const Text(
+                  'Enter the full path to the folder containing images:'),
               const SizedBox(height: 16),
               TextField(
                 controller: controller,
@@ -865,7 +954,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () => Navigator.pop(context, controller.text.trim()),
               child: const Text('Import'),
@@ -885,7 +976,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return;
-      
+
       // Show progress dialog
       showDialog(
         context: context,
@@ -895,13 +986,13 @@ class _HomeScreenState extends State<HomeScreen> {
           sourceFolderPath: folderPath,
           destinationFolderId: _currentFolderId,
           onComplete: () {
-            debugPrint('DEBUG: Bulk import completed, closing dialog and refreshing');
+            debugPrint(
+                'DEBUG: Bulk import completed, closing dialog and refreshing');
             Navigator.pop(context);
             _refresh();
           },
         ),
       );
-
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -912,7 +1003,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openFolderInYomikiru(VaultFolder folder) async {
     if (!mounted) return;
-    
+
     // Show progress dialog
     showDialog(
       context: context,
@@ -942,7 +1033,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showYomikiruSuccessDialog(String folderName, String tempPath) {
     final messenger = ScaffoldMessenger.of(context);
-    
+
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing without action
@@ -960,28 +1051,32 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text('Successfully launched Yomikiru with folder "$folderName"!'),
             const SizedBox(height: 16),
-            const Text('Images exported to:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Images exported to:',
+                style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: SelectableText(
                       tempPath,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      style: const TextStyle(
+                          fontFamily: 'monospace', fontSize: 12),
                     ),
                   ),
                   IconButton(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: tempPath));
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Path copied to clipboard!')),
+                        const SnackBar(
+                            content: Text('Path copied to clipboard!')),
                       );
                     },
                     icon: const Icon(Icons.copy, size: 20),
@@ -994,16 +1089,22 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withOpacity(0.3),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Theme.of(context).colorScheme.primary),
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.primary),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('💡 Tip:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('💡 Tip:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   SizedBox(height: 4),
-                  Text('If images don\'t appear in Yomikiru, copy the path above and set it as the manga folder in Yomikiru\'s settings.'),
+                  Text(
+                      'If images don\'t appear in Yomikiru, copy the path above and set it as the manga folder in Yomikiru\'s settings.'),
                 ],
               ),
             ),
@@ -1017,7 +1118,8 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () async {
-              await Process.start('explorer', [tempPath], mode: ProcessStartMode.detached);
+              await Process.start('explorer', [tempPath],
+                  mode: ProcessStartMode.detached);
             },
             child: const Text('Open Folder'),
           ),
@@ -1033,7 +1135,8 @@ class _HomeScreenState extends State<HomeScreen> {
               if (mounted) {
                 navigator.pop();
                 messenger.showSnackBar(
-                  const SnackBar(content: Text('Temp folder cleaned up successfully!')),
+                  const SnackBar(
+                      content: Text('Temp folder cleaned up successfully!')),
                 );
               }
             },
@@ -1046,7 +1149,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showYomikiruNotFoundDialog(String tempPath, String? error) {
     final messenger = ScaffoldMessenger.of(context);
-    
+
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing without action
@@ -1062,28 +1165,32 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Yomikiru was not found, but your images have been exported to:'),
+            const Text(
+                'Yomikiru was not found, but your images have been exported to:'),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.outline),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: SelectableText(
                       tempPath,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                      style: const TextStyle(
+                          fontFamily: 'monospace', fontSize: 12),
                     ),
                   ),
                   IconButton(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: tempPath));
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Path copied to clipboard!')),
+                        const SnackBar(
+                            content: Text('Path copied to clipboard!')),
                       );
                     },
                     icon: const Icon(Icons.copy, size: 20),
@@ -1096,18 +1203,26 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withOpacity(0.3),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Theme.of(context).colorScheme.primary),
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.primary),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('📋 Next Steps:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('📋 Next Steps:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   SizedBox(height: 8),
-                  Text('1. Install Yomikiru at C:\\Users\\raysa\\AppData\\Local\\yomikiru\\Yomikiru.exe and try again'),
-                  Text('2. Copy the path above and set it in Yomikiru settings'),
-                  Text('3. Open the folder manually in your preferred manga reader'),
+                  Text(
+                      '1. Install Yomikiru at C:\\Users\\raysa\\AppData\\Local\\yomikiru\\Yomikiru.exe and try again'),
+                  Text(
+                      '2. Copy the path above and set it in Yomikiru settings'),
+                  Text(
+                      '3. Open the folder manually in your preferred manga reader'),
                 ],
               ),
             ),
@@ -1130,7 +1245,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           TextButton(
             onPressed: () async {
-              await Process.start('explorer', [tempPath], mode: ProcessStartMode.detached);
+              await Process.start('explorer', [tempPath],
+                  mode: ProcessStartMode.detached);
             },
             child: const Text('Open Folder'),
           ),
@@ -1146,7 +1262,8 @@ class _HomeScreenState extends State<HomeScreen> {
               if (mounted) {
                 navigator.pop();
                 messenger.showSnackBar(
-                  const SnackBar(content: Text('Temp folder cleaned up successfully!')),
+                  const SnackBar(
+                      content: Text('Temp folder cleaned up successfully!')),
                 );
               }
             },
@@ -1157,11 +1274,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showFolderContextMenu(BuildContext context, Offset position, VaultFolder folder) {
+  void _showFolderContextMenu(
+      BuildContext context, Offset position, VaultFolder folder) {
     // Use showMenu with proper positioning
-    final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final RenderBox? overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
-    
+
     showMenu(
       context: context,
       position: RelativeRect.fromRect(
@@ -1255,8 +1374,12 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: const InputDecoration(labelText: 'Folder name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -1271,10 +1394,15 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete folder?'),
-        content: const Text('This deletes the folder and everything inside it.'),
+        content:
+            const Text('This deletes the folder and everything inside it.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -1285,7 +1413,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _moveFolder(VaultFolder folder) async {
     final dest = await Navigator.of(context).push<int?>(
-      MaterialPageRoute(builder: (_) => FolderPickerScreen(repo: _repo, title: 'Move folder to')),
+      MaterialPageRoute(
+          builder: (_) =>
+              FolderPickerScreen(repo: _repo, title: 'Move folder to')),
     );
     if (!mounted) return;
     try {
@@ -1307,7 +1437,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return;
-      
+
       // Choose export location
       final outputPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Save ZIP File',
@@ -1457,7 +1587,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
   Future<void> _renameFile(VaultFile file) async {
     final controller = TextEditingController(text: file.originalName);
     final name = await showDialog<String>(
@@ -1470,8 +1599,12 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: const InputDecoration(labelText: 'File name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -1488,8 +1621,12 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Delete file?'),
         content: Text(file.originalName),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -1500,7 +1637,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _moveFile(VaultFile file) async {
     final dest = await Navigator.of(context).push<int?>(
-      MaterialPageRoute(builder: (_) => FolderPickerScreen(repo: _repo, title: 'Move file to')),
+      MaterialPageRoute(
+          builder: (_) =>
+              FolderPickerScreen(repo: _repo, title: 'Move file to')),
     );
     if (!mounted) return;
     await _repo.moveFile(fileId: file.id, newParentFolderId: dest);
@@ -1538,9 +1677,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _deleteSelectedItems() async {
-    final selectedFiles = _files.where((f) => _selectedFileIds.contains(f.id)).toList();
-    final selectedFolders = _folders.where((f) => _selectedFolderIds.contains(f.id)).toList();
-    
+    final selectedFiles =
+        _files.where((f) => _selectedFileIds.contains(f.id)).toList();
+    final selectedFolders =
+        _folders.where((f) => _selectedFolderIds.contains(f.id)).toList();
+
     final totalItems = selectedFiles.length + selectedFolders.length;
     if (totalItems == 0) return;
 
@@ -1550,19 +1691,23 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Delete selected items?'),
         content: Text('This will delete $totalItems items permanently.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
         ],
       ),
     );
-    
+
     if (ok != true) return;
 
     // Delete files
     for (final file in selectedFiles) {
       await _repo.deleteFile(fileId: file.id);
     }
-    
+
     // Delete folders
     for (final folder in selectedFolders) {
       await _repo.deleteFolderRecursive(folderId: folder.id);
@@ -1573,15 +1718,73 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedFileIds.clear();
       _selectedFolderIds.clear();
     });
-    
+
     await _refresh();
+  }
+
+  Future<void> _moveSelectedItems() async {
+    final selectedFiles =
+        _files.where((f) => _selectedFileIds.contains(f.id)).toList();
+    final selectedFolders =
+        _folders.where((f) => _selectedFolderIds.contains(f.id)).toList();
+
+    final totalItems = selectedFiles.length + selectedFolders.length;
+    if (totalItems == 0) return;
+
+    // Show folder picker
+    final dest = await Navigator.push<int?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FolderPickerScreen(
+          repo: _repo,
+          title: 'Move $totalItems items to',
+        ),
+      ),
+    );
+
+    if (!mounted || dest == null) return;
+
+    try {
+      // Move files
+      for (final file in selectedFiles) {
+        await _repo.moveFile(fileId: file.id, newParentFolderId: dest);
+      }
+
+      // Batch move folders for better performance
+      if (selectedFolders.isNotEmpty) {
+        await _repo.batchMoveFolders(
+          folderIds: selectedFolders.map((f) => f.id).toList(),
+          newParentId: dest,
+        );
+      }
+
+      setState(() {
+        _multiSelectMode = false;
+        _selectedFileIds.clear();
+        _selectedFolderIds.clear();
+      });
+
+      await _refresh();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Moved $totalItems items successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Move failed: $e')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: _folderStack.isEmpty,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         await _popFolder();
       },
@@ -1593,105 +1796,139 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: _popFolder,
                   icon: const Icon(Icons.arrow_back),
                 ),
-          title: _multiSelectMode 
-              ? Text('${_selectedFileIds.length + _selectedFolderIds.length} selected')
-              : Text(_folderStack.isEmpty ? 'Local Vault' : _folderStack.last.name),
-          actions: _multiSelectMode ? [
-            if (_selectedFileIds.isNotEmpty || _selectedFolderIds.isNotEmpty)
-              IconButton(
-                tooltip: 'Delete selected',
-                onPressed: _deleteSelectedItems,
-                icon: const Icon(Icons.delete),
-              ),
-            IconButton(
-              tooltip: 'Cancel selection',
-              onPressed: _toggleMultiSelectMode,
-              icon: const Icon(Icons.close),
-            ),
-          ] : [
-            if (_undoService.canUndo)
-              IconButton(
-                tooltip: 'Undo: ${_undoService.nextUndoDescription}',
-                onPressed: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  try {
-                    await _undoService.undo();
-                    await _refresh();
-                  } catch (e) {
-                    if (mounted) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('Undo failed: $e')),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.undo),
-              ),
-            IconButton(
-              tooltip: 'Clear Cache',
-              onPressed: _clearCacheQuick,
-              icon: const Icon(Icons.cleaning_services),
-            ),
-            IconButton(
-              tooltip: 'Search',
-              onPressed: _openGlobalSearch,
-              icon: Icon(_query.isEmpty ? Icons.search : Icons.search_off),
-            ),
-            IconButton(
-              tooltip: 'Select multiple',
-              onPressed: _toggleMultiSelectMode,
-              icon: const Icon(Icons.checklist),
-            ),
-            IconButton(
-              tooltip: 'New folder',
-              onPressed: _addFolder,
-              icon: const Icon(Icons.create_new_folder_outlined),
-            ),
-            IconButton(
-              tooltip: 'Add media',
-              onPressed: _addMedia,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'More',
-              onSelected: (value) async {
-                if (value == 'import') await _importZip();
-                if (value == 'import_folder') await _importFolder();
-                if (value == 'export') await _exportAll();
-                if (value == 'save_gallery') await _saveToLocalGallery();
-                if (value == 'lock') {
-                  if (!context.mounted) return;
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const AuthGate()),
-                    (_) => false,
-                  );
-                }
-                if (value == 'sort_name') setState(() => _sort = 'name');
-                if (value == 'sort_date') setState(() => _sort = 'date');
-                if (value == 'sort_size') setState(() => _sort = 'size');
-                if (value == 'sort_dir') setState(() => _sortAsc = !_sortAsc);
-                if (value == 'view_toggle') setState(() => _gridView = !_gridView);
-                if (value == 'settings' && context.mounted) {
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'import_folder', child: Text('Import Folder')),
-                PopupMenuItem(value: 'import', child: Text('Import ZIP')),
-                PopupMenuItem(value: 'export', child: Text('Export')),
-                PopupMenuItem(value: 'save_gallery', child: Text('Save to Local Gallery')),
-                PopupMenuDivider(),
-                PopupMenuItem(value: 'sort_name', child: Text('Sort: Name')),
-                PopupMenuItem(value: 'sort_date', child: Text('Sort: Date')),
-                PopupMenuItem(value: 'sort_size', child: Text('Sort: Size')),
-                PopupMenuItem(value: 'sort_dir', child: Text('Toggle ascending/descending')),
-                PopupMenuItem(value: 'view_toggle', child: Text('Toggle list/grid')),
-                PopupMenuDivider(),
-                PopupMenuItem(value: 'settings', child: Text('Settings')),
-                PopupMenuItem(value: 'lock', child: Text('Lock vault')),
-              ],
-            ),
-          ],
+          title: _multiSelectMode
+              ? Text(
+                  '${_selectedFileIds.length + _selectedFolderIds.length} selected')
+              : Text(_folderStack.isEmpty
+                  ? 'Local Vault'
+                  : _folderStack.last.name),
+          actions: _multiSelectMode
+              ? [
+                  if (_selectedFileIds.isNotEmpty ||
+                      _selectedFolderIds.isNotEmpty) ...[
+                    IconButton(
+                      tooltip: 'Move selected',
+                      onPressed: _moveSelectedItems,
+                      icon: const Icon(Icons.drive_file_move),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete selected',
+                      onPressed: _deleteSelectedItems,
+                      icon: const Icon(Icons.delete),
+                    ),
+                  ],
+                  IconButton(
+                    tooltip: 'Cancel selection',
+                    onPressed: _toggleMultiSelectMode,
+                    icon: const Icon(Icons.close),
+                  ),
+                ]
+              : [
+                  if (_undoService.canUndo)
+                    IconButton(
+                      tooltip: 'Undo: ${_undoService.nextUndoDescription}',
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          await _undoService.undo();
+                          await _refresh();
+                        } catch (e) {
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              SnackBar(content: Text('Undo failed: $e')),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.undo),
+                    ),
+                  IconButton(
+                    tooltip: 'Clear Cache',
+                    onPressed: _clearCacheQuick,
+                    icon: const Icon(Icons.cleaning_services),
+                  ),
+                  IconButton(
+                    tooltip: 'Search',
+                    onPressed: _openGlobalSearch,
+                    icon:
+                        Icon(_query.isEmpty ? Icons.search : Icons.search_off),
+                  ),
+                  IconButton(
+                    tooltip: 'Select multiple',
+                    onPressed: _toggleMultiSelectMode,
+                    icon: const Icon(Icons.checklist),
+                  ),
+                  IconButton(
+                    tooltip: 'New folder',
+                    onPressed: _addFolder,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Add media',
+                    onPressed: _addMedia,
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'More',
+                    onSelected: (value) async {
+                      if (value == 'import') await _importZip();
+                      if (value == 'import_folder') await _importFolder();
+                      if (value == 'export') await _exportAll();
+                      if (value == 'save_gallery') await _saveToLocalGallery();
+                      if (value == 'lock') {
+                        if (!context.mounted) return;
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => const AuthGate()),
+                          (_) => false,
+                        );
+                      }
+                      if (value == 'sort_name') {
+                        setState(() => _sort = 'name');
+                      }
+                      if (value == 'sort_date') {
+                        setState(() => _sort = 'date');
+                      }
+                      if (value == 'sort_size') {
+                        setState(() => _sort = 'size');
+                      }
+                      if (value == 'sort_dir') {
+                        setState(() => _sortAsc = !_sortAsc);
+                      }
+                      if (value == 'view_toggle') {
+                        setState(() => _gridView = !_gridView);
+                      }
+                      if (value == 'settings' && context.mounted) {
+                        Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()));
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                          value: 'import_folder', child: Text('Import Folder')),
+                      PopupMenuItem(value: 'import', child: Text('Import ZIP')),
+                      PopupMenuItem(value: 'export', child: Text('Export')),
+                      PopupMenuItem(
+                          value: 'save_gallery',
+                          child: Text('Save to Local Gallery')),
+                      PopupMenuDivider(),
+                      PopupMenuItem(
+                          value: 'sort_name', child: Text('Sort: Name')),
+                      PopupMenuItem(
+                          value: 'sort_date', child: Text('Sort: Date')),
+                      PopupMenuItem(
+                          value: 'sort_size', child: Text('Sort: Size')),
+                      PopupMenuItem(
+                          value: 'sort_dir',
+                          child: Text('Toggle ascending/descending')),
+                      PopupMenuItem(
+                          value: 'view_toggle',
+                          child: Text('Toggle list/grid')),
+                      PopupMenuDivider(),
+                      PopupMenuItem(value: 'settings', child: Text('Settings')),
+                      PopupMenuItem(value: 'lock', child: Text('Lock vault')),
+                    ],
+                  ),
+                ],
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -1701,79 +1938,114 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.only(bottom: 24),
                   children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: _folderStack.isEmpty ? const SizedBox.shrink() : _breadcrumbs(),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      child: _folderStack.isEmpty
+                          ? const SizedBox.shrink()
+                          : _breadcrumbs(),
                     ),
                     if (_query.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 6),
                         child: Row(
                           children: [
                             Expanded(child: Text('Filter: "$_query"')),
-                            TextButton(onPressed: () => setState(() => _query = ''), child: const Text('Clear')),
+                            TextButton(
+                                onPressed: () => setState(() => _query = ''),
+                                child: const Text('Clear')),
                           ],
                         ),
                       ),
                     ..._visibleFolders.map(
                       (folder) => GestureDetector(
                         onSecondaryTapDown: (details) {
-                          _showFolderContextMenu(context, details.globalPosition, folder);
+                          _showFolderContextMenu(
+                              context, details.globalPosition, folder);
                         },
                         child: ListTile(
-                          leading: _multiSelectMode 
-                              ? RepaintBoundary( // Strategic RepaintBoundary for checkbox animation
+                          leading: _multiSelectMode
+                              ? RepaintBoundary(
+                                  // Strategic RepaintBoundary for checkbox animation
                                   child: Checkbox(
-                                    value: _selectedFolderIds.contains(folder.id),
-                                    onChanged: (_) => _toggleFolderSelection(folder.id),
+                                    value:
+                                        _selectedFolderIds.contains(folder.id),
+                                    onChanged: (_) =>
+                                        _toggleFolderSelection(folder.id),
                                   ),
                                 )
                               : const Icon(Icons.folder),
                           title: Text(folder.name),
-                          onTap: _multiSelectMode 
+                          onTap: _multiSelectMode
                               ? () => _toggleFolderSelection(folder.id)
                               : () => _openFolder(folder),
-                          onLongPress: _multiSelectMode ? null : () async {
-                            final action = await showModalBottomSheet<String>(
-                              context: context,
-                              builder: (context) => SafeArea(
-                                child: Wrap(
-                                  children: [
-                                    ListTile(
-                                      leading: const Icon(Icons.auto_stories),
-                                      title: const Text('Open in Yomikiru'),
-                                      onTap: () => Navigator.pop(context, 'yomikiru'),
+                          onLongPress: _multiSelectMode
+                              ? null
+                              : () async {
+                                  final action =
+                                      await showModalBottomSheet<String>(
+                                    context: context,
+                                    builder: (context) => SafeArea(
+                                      child: Wrap(
+                                        children: [
+                                          ListTile(
+                                            leading:
+                                                const Icon(Icons.auto_stories),
+                                            title:
+                                                const Text('Open in Yomikiru'),
+                                            onTap: () => Navigator.pop(
+                                                context, 'yomikiru'),
+                                          ),
+                                          ListTile(
+                                            leading:
+                                                const Icon(Icons.folder_zip),
+                                            title: const Text('Export as ZIP'),
+                                            subtitle: const Text(
+                                                'Export this folder only'),
+                                            onTap: () => Navigator.pop(
+                                                context, 'export_zip'),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.drive_file_move_outline),
+                                            title: const Text('Move'),
+                                            onTap: () =>
+                                                Navigator.pop(context, 'move'),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(Icons
+                                                .drive_file_rename_outline),
+                                            title: const Text('Rename'),
+                                            onTap: () => Navigator.pop(
+                                                context, 'rename'),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.delete_outline),
+                                            title: const Text('Delete'),
+                                            onTap: () => Navigator.pop(
+                                                context, 'delete'),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    ListTile(
-                                      leading: const Icon(Icons.folder_zip),
-                                      title: const Text('Export as ZIP'),
-                                      subtitle: const Text('Export this folder only'),
-                                      onTap: () => Navigator.pop(context, 'export_zip'),
-                                    ),
-                                    ListTile(
-                                      leading: const Icon(Icons.drive_file_move_outline),
-                                      title: const Text('Move'),
-                                      onTap: () => Navigator.pop(context, 'move'),
-                                    ),
-                                    ListTile(
-                                      leading: const Icon(Icons.drive_file_rename_outline),
-                                      title: const Text('Rename'),
-                                      onTap: () => Navigator.pop(context, 'rename'),
-                                    ),
-                                    ListTile(
-                                      leading: const Icon(Icons.delete_outline),
-                                      title: const Text('Delete'),
-                                      onTap: () => Navigator.pop(context, 'delete'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                            if (action == 'yomikiru') await _openFolderInYomikiru(folder);
-                            if (action == 'export_zip') await _exportFolderAsZip(folder);
-                            if (action == 'move') await _moveFolder(folder);
-                            if (action == 'rename') await _renameFolder(folder);
-                            if (action == 'delete') await _deleteFolder(folder);
-                          },
+                                  );
+                                  if (action == 'yomikiru') {
+                                    await _openFolderInYomikiru(folder);
+                                  }
+                                  if (action == 'export_zip') {
+                                    await _exportFolderAsZip(folder);
+                                  }
+                                  if (action == 'move') {
+                                    await _moveFolder(folder);
+                                  }
+                                  if (action == 'rename') {
+                                    await _renameFolder(folder);
+                                  }
+                                  if (action == 'delete') {
+                                    await _deleteFolder(folder);
+                                  }
+                                },
                         ),
                       ),
                     ),
@@ -1781,10 +2053,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       ..._visibleFiles.map(
                         (file) => ListTile(
                           leading: _multiSelectMode
-                              ? RepaintBoundary( // Strategic RepaintBoundary for checkbox animation
+                              ? RepaintBoundary(
+                                  // Strategic RepaintBoundary for checkbox animation
                                   child: Checkbox(
                                     value: _selectedFileIds.contains(file.id),
-                                    onChanged: (_) => _toggleFileSelection(file.id),
+                                    onChanged: (_) =>
+                                        _toggleFileSelection(file.id),
                                   ),
                                 )
                               : isImageFileName(file.originalName)
@@ -1792,59 +2066,81 @@ class _HomeScreenState extends State<HomeScreen> {
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context).colorScheme.primaryContainer,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Icon(
                                         Icons.image,
-                                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onPrimaryContainer,
                                       ),
                                     )
                                   : const Icon(Icons.insert_drive_file),
                           title: Text(file.originalName),
-                          subtitle: Text('${formatBytes(file.byteSize)} • ${formatLocalDateTime(file.createdAt)}'),
-                          onTap: _multiSelectMode 
+                          subtitle: Text(
+                              '${formatBytes(file.byteSize)} • ${formatLocalDateTime(file.createdAt)}'),
+                          onTap: _multiSelectMode
                               ? () => _toggleFileSelection(file.id)
                               : () => _openFile(file),
-                          onLongPress: _multiSelectMode ? null : () async {
-                          final action = await showModalBottomSheet<String>(
-                            context: context,
-                            builder: (context) => SafeArea(
-                              child: Wrap(
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.drive_file_move_outline),
-                                    title: const Text('Move'),
-                                    onTap: () => Navigator.pop(context, 'move'),
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(Icons.drive_file_rename_outline),
-                                    title: const Text('Rename'),
-                                    onTap: () => Navigator.pop(context, 'rename'),
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(Icons.delete_outline),
-                                    title: const Text('Delete'),
-                                    onTap: () => Navigator.pop(context, 'delete'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                          if (action == 'move') await _moveFile(file);
-                          if (action == 'rename') await _renameFile(file);
-                          if (action == 'delete') await _deleteFile(file);
-                        },
+                          onLongPress: _multiSelectMode
+                              ? null
+                              : () async {
+                                  final action =
+                                      await showModalBottomSheet<String>(
+                                    context: context,
+                                    builder: (context) => SafeArea(
+                                      child: Wrap(
+                                        children: [
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.drive_file_move_outline),
+                                            title: const Text('Move'),
+                                            onTap: () =>
+                                                Navigator.pop(context, 'move'),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(Icons
+                                                .drive_file_rename_outline),
+                                            title: const Text('Rename'),
+                                            onTap: () => Navigator.pop(
+                                                context, 'rename'),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(
+                                                Icons.delete_outline),
+                                            title: const Text('Delete'),
+                                            onTap: () => Navigator.pop(
+                                                context, 'delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                  if (action == 'move') {
+                                    await _moveFile(file);
+                                  }
+                                  if (action == 'rename') {
+                                    await _renameFile(file);
+                                  }
+                                  if (action == 'delete') {
+                                    await _deleteFile(file);
+                                  }
+                                },
                         ),
                       )
                     else
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         child: GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _visibleFiles.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 10,
@@ -1855,70 +2151,106 @@ class _HomeScreenState extends State<HomeScreen> {
                             final isImg = isImageFileName(file.originalName);
                             return InkWell(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: _multiSelectMode 
+                              onTap: _multiSelectMode
                                   ? () => _toggleFileSelection(file.id)
                                   : () => _openFile(file),
-                              onLongPress: _multiSelectMode ? null : () async {
-                                final action = await showModalBottomSheet<String>(
-                                  context: context,
-                                  builder: (context) => SafeArea(
-                                    child: Wrap(
-                                      children: [
-                                        ListTile(
-                                          leading: const Icon(Icons.drive_file_move_outline),
-                                          title: const Text('Move'),
-                                          onTap: () => Navigator.pop(context, 'move'),
+                              onLongPress: _multiSelectMode
+                                  ? null
+                                  : () async {
+                                      final action =
+                                          await showModalBottomSheet<String>(
+                                        context: context,
+                                        builder: (context) => SafeArea(
+                                          child: Wrap(
+                                            children: [
+                                              ListTile(
+                                                leading: const Icon(Icons
+                                                    .drive_file_move_outline),
+                                                title: const Text('Move'),
+                                                onTap: () => Navigator.pop(
+                                                    context, 'move'),
+                                              ),
+                                              ListTile(
+                                                leading: const Icon(Icons
+                                                    .drive_file_rename_outline),
+                                                title: const Text('Rename'),
+                                                onTap: () => Navigator.pop(
+                                                    context, 'rename'),
+                                              ),
+                                              ListTile(
+                                                leading: const Icon(
+                                                    Icons.delete_outline),
+                                                title: const Text('Delete'),
+                                                onTap: () => Navigator.pop(
+                                                    context, 'delete'),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                        ListTile(
-                                          leading: const Icon(Icons.drive_file_rename_outline),
-                                          title: const Text('Rename'),
-                                          onTap: () => Navigator.pop(context, 'rename'),
-                                        ),
-                                        ListTile(
-                                          leading: const Icon(Icons.delete_outline),
-                                          title: const Text('Delete'),
-                                          onTap: () => Navigator.pop(context, 'delete'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                                if (action == 'move') await _moveFile(file);
-                                if (action == 'rename') await _renameFile(file);
-                                if (action == 'delete') await _deleteFile(file);
-                              },
+                                      );
+                                      if (action == 'move') {
+                                        await _moveFile(file);
+                                      }
+                                      if (action == 'rename') {
+                                        await _renameFile(file);
+                                      }
+                                      if (action == 'delete') {
+                                        await _deleteFile(file);
+                                      }
+                                    },
                               child: Stack(
                                 children: [
                                   Ink(
                                     decoration: BoxDecoration(
-                                      color: _multiSelectMode && _selectedFileIds.contains(file.id)
-                                          ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
-                                          : Theme.of(context).colorScheme.surface,
+                                      color: _multiSelectMode &&
+                                              _selectedFileIds.contains(file.id)
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primaryContainer
+                                              .withOpacity(0.3)
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .surface,
                                       borderRadius: BorderRadius.circular(12),
-                                      border: _multiSelectMode && _selectedFileIds.contains(file.id)
-                                          ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)
+                                      border: _multiSelectMode &&
+                                              _selectedFileIds.contains(file.id)
+                                          ? Border.all(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                              width: 2)
                                           : null,
                                     ),
                                     child: Padding(
                                       padding: const EdgeInsets.all(10),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Expanded(
                                             child: Center(
                                               child: isImg
                                                   ? Container(
                                                       decoration: BoxDecoration(
-                                                        color: Theme.of(context).colorScheme.primaryContainer,
-                                                        borderRadius: BorderRadius.circular(10),
+                                                        color: Theme.of(context)
+                                                            .colorScheme
+                                                            .primaryContainer,
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(10),
                                                       ),
                                                       child: Icon(
                                                         Icons.image,
                                                         size: 40,
-                                                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                                        color: Theme.of(context)
+                                                            .colorScheme
+                                                            .onPrimaryContainer,
                                                       ),
                                                     )
-                                                  : const Icon(Icons.insert_drive_file_outlined, size: 40),
+                                                  : const Icon(
+                                                      Icons
+                                                          .insert_drive_file_outlined,
+                                                      size: 40),
                                             ),
                                           ),
                                           const SizedBox(height: 8),
@@ -1929,7 +2261,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                           Text(
                                             formatBytes(file.byteSize),
-                                            style: Theme.of(context).textTheme.bodySmall,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall,
                                           ),
                                         ],
                                       ),
@@ -1939,23 +2273,34 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Positioned(
                                       top: 8,
                                       right: 8,
-                                      child: RepaintBoundary( // Strategic RepaintBoundary for selection animation
+                                      child: RepaintBoundary(
+                                        // Strategic RepaintBoundary for selection animation
                                         child: Container(
                                           decoration: BoxDecoration(
-                                            color: _selectedFileIds.contains(file.id)
-                                                ? Theme.of(context).colorScheme.primary
-                                                : Theme.of(context).colorScheme.surface,
+                                            color: _selectedFileIds
+                                                    .contains(file.id)
+                                                ? Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                : Theme.of(context)
+                                                    .colorScheme
+                                                    .surface,
                                             shape: BoxShape.circle,
                                             border: Border.all(
-                                              color: Theme.of(context).colorScheme.outline,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .outline,
                                             ),
                                           ),
                                           child: Icon(
                                             _selectedFileIds.contains(file.id)
                                                 ? Icons.check
                                                 : null,
-                                            color: _selectedFileIds.contains(file.id)
-                                                ? Theme.of(context).colorScheme.onPrimary
+                                            color: _selectedFileIds
+                                                    .contains(file.id)
+                                                ? Theme.of(context)
+                                                    .colorScheme
+                                                    .onPrimary
                                                 : null,
                                             size: 20,
                                           ),
@@ -1973,19 +2318,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: EdgeInsets.all(24),
                         child: Text('No items found.'),
                       ),
-                    
+
                     // Load more button with RepaintBoundary for animation
                     if (_hasMoreFiles && !_loading)
                       Padding(
                         padding: const EdgeInsets.all(16),
                         child: Center(
-                          child: RepaintBoundary( // Strategic RepaintBoundary for button animation
+                          child: RepaintBoundary(
+                            // Strategic RepaintBoundary for button animation
                             child: _loadingMore
                                 ? const CircularProgressIndicator()
                                 : FilledButton.icon(
                                     onPressed: _loadMoreFiles,
                                     icon: const Icon(Icons.expand_more),
-                                    label: Text('Load more (${_totalFileCount - _files.length} remaining)'),
+                                    label: Text(
+                                        'Load more (${_totalFileCount - _files.length} remaining)'),
                                   ),
                           ),
                         ),
@@ -1997,7 +2344,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
 
 class _BulkImportProgressDialog extends StatefulWidget {
   const _BulkImportProgressDialog({
@@ -2013,7 +2359,8 @@ class _BulkImportProgressDialog extends StatefulWidget {
   final VoidCallback onComplete;
 
   @override
-  State<_BulkImportProgressDialog> createState() => _BulkImportProgressDialogState();
+  State<_BulkImportProgressDialog> createState() =>
+      _BulkImportProgressDialogState();
 }
 
 class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
@@ -2071,7 +2418,8 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
             Text('Files imported: ${_result!.filesImported}'),
             Text('Folders created: ${_result!.foldersCreated}'),
             if (_result!.errors.isNotEmpty)
-              Text('Errors: ${_result!.errors.length}', style: const TextStyle(color: Colors.orange)),
+              Text('Errors: ${_result!.errors.length}',
+                  style: const TextStyle(color: Colors.orange)),
           ],
         ],
       ),
@@ -2087,7 +2435,6 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
     );
   }
 }
-
 
 /// Export All progress dialog for Windows
 class _ExportAllProgressDialog extends StatefulWidget {
@@ -2106,7 +2453,8 @@ class _ExportAllProgressDialog extends StatefulWidget {
   final Function(String) onError;
 
   @override
-  State<_ExportAllProgressDialog> createState() => _ExportAllProgressDialogState();
+  State<_ExportAllProgressDialog> createState() =>
+      _ExportAllProgressDialogState();
 }
 
 class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
@@ -2125,7 +2473,7 @@ class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
     try {
       setState(() => _currentStatus = 'Decrypting files...');
       await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
-      
+
       final result = await widget.importExport.exportAllToZip(
         outputZipPath: widget.outputZipPath,
         usePassword: widget.usePassword,
@@ -2181,7 +2529,8 @@ class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
                 Text(_currentStatus, style: const TextStyle(fontSize: 14)),
                 if (elapsedTime.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(elapsedTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(elapsedTime,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
                 const SizedBox(height: 16),
                 const Text(
@@ -2189,7 +2538,9 @@ class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ] else ...[
-                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const Center(
+                    child: Icon(Icons.check_circle,
+                        color: Colors.green, size: 48)),
                 const SizedBox(height: 16),
                 Text(_currentStatus),
               ],
@@ -2226,10 +2577,12 @@ class _SaveToGalleryProgressDialog extends StatefulWidget {
   final Function(String) onError;
 
   @override
-  State<_SaveToGalleryProgressDialog> createState() => _SaveToGalleryProgressDialogState();
+  State<_SaveToGalleryProgressDialog> createState() =>
+      _SaveToGalleryProgressDialogState();
 }
 
-class _SaveToGalleryProgressDialogState extends State<_SaveToGalleryProgressDialog> {
+class _SaveToGalleryProgressDialogState
+    extends State<_SaveToGalleryProgressDialog> {
   String _currentStatus = 'Preparing to save...';
   bool _isComplete = false;
   DateTime? _startTime;
@@ -2245,7 +2598,7 @@ class _SaveToGalleryProgressDialogState extends State<_SaveToGalleryProgressDial
     try {
       setState(() => _currentStatus = 'Decrypting files...');
       await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
-      
+
       // Export without password (unencrypted ZIP)
       final result = await widget.importExport.exportAllToZip(
         outputZipPath: widget.outputZipPath,
@@ -2303,7 +2656,8 @@ class _SaveToGalleryProgressDialogState extends State<_SaveToGalleryProgressDial
                 Text(_currentStatus, style: const TextStyle(fontSize: 14)),
                 if (elapsedTime.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(elapsedTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(elapsedTime,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
                 const SizedBox(height: 16),
                 const Text(
@@ -2311,7 +2665,9 @@ class _SaveToGalleryProgressDialogState extends State<_SaveToGalleryProgressDial
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ] else ...[
-                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const Center(
+                    child: Icon(Icons.check_circle,
+                        color: Colors.green, size: 48)),
                 const SizedBox(height: 16),
                 Text(_currentStatus),
               ],
@@ -2348,7 +2704,8 @@ class _YomikiruProgressDialog extends StatefulWidget {
   final Function(String) onError;
 
   @override
-  State<_YomikiruProgressDialog> createState() => _YomikiruProgressDialogState();
+  State<_YomikiruProgressDialog> createState() =>
+      _YomikiruProgressDialogState();
 }
 
 class _YomikiruProgressDialogState extends State<_YomikiruProgressDialog> {
@@ -2379,10 +2736,10 @@ class _YomikiruProgressDialogState extends State<_YomikiruProgressDialog> {
           _isComplete = true;
           _currentStatus = 'Export completed successfully!';
         });
-        
+
         // Wait a moment to show completion, then call callback
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         if (mounted) {
           widget.onComplete(result);
         }
@@ -2393,10 +2750,10 @@ class _YomikiruProgressDialogState extends State<_YomikiruProgressDialog> {
           _isComplete = true;
           _currentStatus = 'Export failed: $e';
         });
-        
+
         // Wait a moment to show error, then call callback
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         if (mounted) {
           widget.onError(e.toString());
         }
@@ -2426,7 +2783,9 @@ class _YomikiruProgressDialogState extends State<_YomikiruProgressDialog> {
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ] else ...[
-                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const Center(
+                    child: Icon(Icons.check_circle,
+                        color: Colors.green, size: 48)),
                 const SizedBox(height: 16),
                 Text(_currentStatus),
               ],
@@ -2467,10 +2826,12 @@ class _ExportFolderZipProgressDialog extends StatefulWidget {
   final Function(String) onError;
 
   @override
-  State<_ExportFolderZipProgressDialog> createState() => _ExportFolderZipProgressDialogState();
+  State<_ExportFolderZipProgressDialog> createState() =>
+      _ExportFolderZipProgressDialogState();
 }
 
-class _ExportFolderZipProgressDialogState extends State<_ExportFolderZipProgressDialog> {
+class _ExportFolderZipProgressDialogState
+    extends State<_ExportFolderZipProgressDialog> {
   String _currentStatus = 'Preparing export...';
   bool _isComplete = false;
   DateTime? _startTime;
@@ -2486,7 +2847,7 @@ class _ExportFolderZipProgressDialogState extends State<_ExportFolderZipProgress
     try {
       setState(() => _currentStatus = 'Decrypting files from folder...');
       await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
-      
+
       final result = await widget.importExport.exportFolderToZip(
         folderId: widget.folder.id,
         outputZipPath: widget.outputZipPath,
@@ -2543,15 +2904,21 @@ class _ExportFolderZipProgressDialogState extends State<_ExportFolderZipProgress
                 Text(_currentStatus, style: const TextStyle(fontSize: 14)),
                 if (elapsedTime.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(elapsedTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(elapsedTime,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ],
                 const SizedBox(height: 16),
                 Text(
                   'Exporting: ${widget.folder.name}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold),
                 ),
               ] else ...[
-                const Center(child: Icon(Icons.check_circle, color: Colors.green, size: 48)),
+                const Center(
+                    child: Icon(Icons.check_circle,
+                        color: Colors.green, size: 48)),
                 const SizedBox(height: 16),
                 Text(_currentStatus),
               ],

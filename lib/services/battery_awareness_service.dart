@@ -5,14 +5,15 @@ import 'package:flutter/foundation.dart';
 /// Battery awareness service for adaptive processing based on battery level and charging state
 class BatteryAwarenessService {
   static BatteryAwarenessService? _instance;
-  static BatteryAwarenessService get instance => _instance ??= BatteryAwarenessService._();
-  
+  static BatteryAwarenessService get instance =>
+      _instance ??= BatteryAwarenessService._();
+
   BatteryAwarenessService._();
-  
+
   int? _lastKnownBatteryLevel;
   bool? _lastKnownChargingState;
   DateTime _lastBatteryCheck = DateTime.now();
-  
+
   /// Get current battery processing configuration
   Future<BatteryProcessingConfig> getProcessingConfig({
     int baseBatchSize = 5,
@@ -28,7 +29,7 @@ class BatteryAwarenessService {
           reasoning: 'Desktop platform - full performance',
         );
       }
-      
+
       final batteryInfo = await _getBatteryInfo();
       final config = _calculateOptimalConfig(
         batteryLevel: batteryInfo.level,
@@ -36,17 +37,17 @@ class BatteryAwarenessService {
         baseBatchSize: baseBatchSize,
         baseDelayMs: baseDelayMs,
       );
-      
+
       if (kDebugMode) {
         debugPrint('Battery config: ${config.reasoning}');
       }
-      
+
       return config;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Battery awareness error: $e');
       }
-      
+
       // Fallback to normal processing
       return BatteryProcessingConfig(
         batchSize: baseBatchSize,
@@ -56,7 +57,7 @@ class BatteryAwarenessService {
       );
     }
   }
-  
+
   /// Get battery information
   Future<BatteryInfo> _getBatteryInfo() async {
     try {
@@ -70,17 +71,17 @@ class BatteryAwarenessService {
           isCharging: _lastKnownChargingState!,
         );
       }
-      
+
       // Get battery info from system (Android-specific implementation would go here)
       // For now, using reasonable defaults
       final batteryLevel = await _getSystemBatteryLevel();
       final isCharging = await _getSystemChargingState();
-      
+
       // Cache the results
       _lastKnownBatteryLevel = batteryLevel;
       _lastKnownChargingState = isCharging;
       _lastBatteryCheck = now;
-      
+
       return BatteryInfo(
         level: batteryLevel,
         isCharging: isCharging,
@@ -89,12 +90,12 @@ class BatteryAwarenessService {
       if (kDebugMode) {
         debugPrint('Error getting battery info: $e');
       }
-      
+
       // Return safe defaults
       return BatteryInfo(level: 50, isCharging: false);
     }
   }
-  
+
   /// Get system battery level (platform-specific implementation)
   Future<int> _getSystemBatteryLevel() async {
     try {
@@ -108,7 +109,7 @@ class BatteryAwarenessService {
       return 50; // Safe default
     }
   }
-  
+
   /// Get system charging state (platform-specific implementation)
   Future<bool> _getSystemChargingState() async {
     try {
@@ -122,7 +123,7 @@ class BatteryAwarenessService {
       return false; // Safe default
     }
   }
-  
+
   /// Calculate optimal processing configuration based on battery state
   BatteryProcessingConfig _calculateOptimalConfig({
     required int batteryLevel,
@@ -148,7 +149,7 @@ class BatteryAwarenessService {
         );
       }
     }
-    
+
     // Not charging - adapt based on battery level
     if (batteryLevel < 15) {
       return BatteryProcessingConfig(
@@ -180,7 +181,7 @@ class BatteryAwarenessService {
       );
     }
   }
-  
+
   /// Process items with battery awareness
   Future<List<T>> processBatteryAware<T>({
     required List<dynamic> items,
@@ -190,19 +191,19 @@ class BatteryAwarenessService {
     int baseBatchSize = 5,
   }) async {
     if (items.isEmpty) return [];
-    
+
     final results = <T>[];
     final config = await getProcessingConfig(baseBatchSize: baseBatchSize);
-    
+
     onStatusUpdate?.call(config.reasoning);
-    
+
     for (int i = 0; i < items.length; i += config.batchSize) {
-      final batchEnd = (i + config.batchSize < items.length) 
-          ? i + config.batchSize 
+      final batchEnd = (i + config.batchSize < items.length)
+          ? i + config.batchSize
           : items.length;
       final batch = items.sublist(i, batchEnd);
-      
-      // Process batch
+
+      // Process batch — every item must produce a result entry (no silent drops)
       for (final item in batch) {
         try {
           final result = await processor(item);
@@ -211,35 +212,42 @@ class BatteryAwarenessService {
           if (kDebugMode) {
             debugPrint('Error processing item: $e');
           }
+          // Re-throw so the caller (processor wrapper) can return false/default;
+          // but to guarantee results.length == items.length we rethrow and let
+          // the outer try in _addFilesIndividually return false per file.
+          // Here we must NOT swallow without adding — add a typed default.
+          // Since T is dynamic we rethrow to the processor's own try/catch.
+          rethrow;
         }
       }
-      
+
       // Update progress
       final progress = (i + batch.length) / items.length;
       onProgress?.call(progress);
-      
+
       // Battery-aware delay
       if (config.delayMs > 0) {
         await Future.delayed(Duration(milliseconds: config.delayMs));
       }
-      
+
       // Check if we need to update battery config (every 10 batches)
       if ((i ~/ config.batchSize) % 10 == 0) {
-        final newConfig = await getProcessingConfig(baseBatchSize: baseBatchSize);
+        final newConfig =
+            await getProcessingConfig(baseBatchSize: baseBatchSize);
         if (newConfig.strategy != config.strategy) {
           onStatusUpdate?.call('Battery state changed: ${newConfig.reasoning}');
         }
       }
     }
-    
+
     return results;
   }
-  
+
   /// Get battery statistics
   Future<BatteryStats> getBatteryStats() async {
     final batteryInfo = await _getBatteryInfo();
     final config = await getProcessingConfig();
-    
+
     return BatteryStats(
       batteryLevel: batteryInfo.level,
       isCharging: batteryInfo.isCharging,
@@ -254,7 +262,7 @@ class BatteryAwarenessService {
 class BatteryInfo {
   final int level; // 0-100
   final bool isCharging;
-  
+
   BatteryInfo({
     required this.level,
     required this.isCharging,
@@ -267,7 +275,7 @@ class BatteryProcessingConfig {
   final int delayMs;
   final BatteryStrategy strategy;
   final String reasoning;
-  
+
   BatteryProcessingConfig({
     required this.batchSize,
     required this.delayMs,
@@ -278,11 +286,11 @@ class BatteryProcessingConfig {
 
 /// Battery processing strategy
 enum BatteryStrategy {
-  ultraLowPower,  // <15% battery, not charging
-  lowPower,       // <30% battery, not charging
-  conservative,   // <50% battery, not charging
-  normal,         // ≥50% battery or charging
-  enhanced,       // Charging + high battery
+  ultraLowPower, // <15% battery, not charging
+  lowPower, // <30% battery, not charging
+  conservative, // <50% battery, not charging
+  normal, // ≥50% battery or charging
+  enhanced, // Charging + high battery
 }
 
 /// Battery statistics
@@ -292,7 +300,7 @@ class BatteryStats {
   final BatteryStrategy currentStrategy;
   final int recommendedBatchSize;
   final int recommendedDelayMs;
-  
+
   BatteryStats({
     required this.batteryLevel,
     required this.isCharging,
@@ -300,12 +308,12 @@ class BatteryStats {
     required this.recommendedBatchSize,
     required this.recommendedDelayMs,
   });
-  
+
   String get batteryStatusText {
     final chargingText = isCharging ? 'Charging' : 'Not charging';
     return '$batteryLevel% ($chargingText)';
   }
-  
+
   String get strategyText {
     switch (currentStrategy) {
       case BatteryStrategy.ultraLowPower:

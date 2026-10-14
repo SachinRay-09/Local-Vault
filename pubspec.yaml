@@ -16,10 +16,16 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.5.0+5
+version: 2.5.2+6
 
 environment:
   sdk: ^3.2.6
+
+# Dependency overrides: force win32 upgrade to fix UnmodifiableUint8ListView
+# removed in Dart 3.5.x. Can be removed once file_picker / flutter_secure_storage
+# declare a dependency on win32 ^5.5.1 or later.
+dependency_overrides:
+  win32: '>=5.5.1 <5.10.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -47,7 +53,9 @@ dependencies:
   pointycastle: ^3.7.3
   video_player: ^2.8.1
   path: ^1.8.3
-  fvp: ^0.28.0
+  # FVP - Windows-only hardware-accelerated video (comment out for Android builds)
+  # fvp:
+  #   version: ^0.28.0
   
   # SAF and URI handling for Android 15 compatibility
   uri_content: ^0.0.3

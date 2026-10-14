@@ -18,6 +18,7 @@ import 'vault_repository.dart';
 
 /// Enhanced vault repository with folder encryption and thermal protection
 class EnhancedVaultRepository extends VaultRepository {
+  // ignore: deprecated_member_use_from_same_package
   final FolderCryptoService _folderCrypto = FolderCryptoService();
   final ThermalProtectionService _thermal = ThermalProtectionService.instance;
   final MemoryManagementService _memory = MemoryManagementService.instance;
@@ -36,11 +37,6 @@ class EnhancedVaultRepository extends VaultRepository {
   }) {
     // Start thermal monitoring for performance optimization
     _thermal.startMonitoring();
-
-    // Initialize hardware acceleration if not already done
-    if (_hardware.capabilities == null) {
-      _hardware.initialize();
-    }
   }
 
   /// Adds multiple media files with smart encryption strategy
@@ -74,31 +70,15 @@ class EnhancedVaultRepository extends VaultRepository {
 
       final masterKey32 = await secureStorage.getOrCreateMasterKey32();
 
+      // container and hybrid are quarantined in Phase 1 — all strategies
+      // route through _addFilesIndividually (one .bin blob per file).
       switch (analysis.recommendedStrategy) {
         case EncryptionStrategy.container:
-          return await _addFilesAsContainer(
-            sourceFiles: sourceFiles,
-            parentFolderId: parentFolderId,
-            folderName: folderName ?? 'Imported Files',
-            masterKey32: masterKey32,
-            onProgress: onProgress,
-            onStatusUpdate: onStatusUpdate,
-          );
-
+        case EncryptionStrategy.hybrid:
         case EncryptionStrategy.individual:
           return await _addFilesIndividually(
             sourceFiles: sourceFiles,
             parentFolderId: parentFolderId,
-            masterKey32: masterKey32,
-            onProgress: onProgress,
-            onStatusUpdate: onStatusUpdate,
-          );
-
-        case EncryptionStrategy.hybrid:
-          return await _addFilesHybrid(
-            sourceFiles: sourceFiles,
-            parentFolderId: parentFolderId,
-            folderName: folderName ?? 'Imported Files',
             masterKey32: masterKey32,
             onProgress: onProgress,
             onStatusUpdate: onStatusUpdate,
@@ -114,6 +94,8 @@ class EnhancedVaultRepository extends VaultRepository {
   }
 
   /// Adds files as encrypted container (high performance)
+  @Deprecated(
+      'Quarantined Phase 1 — container format unverified; use _addFilesIndividually instead')
   Future<BulkImportResult> _addFilesAsContainer({
     required List<File> sourceFiles,
     required int? parentFolderId,
@@ -200,13 +182,20 @@ class EnhancedVaultRepository extends VaultRepository {
       final results = await _battery.processBatteryAware<bool>(
         items: sourceFiles,
         processor: (file) async {
-          // Check thermal state and adapt processing
-          final thermalConfig = _thermal.getProcessingConfig(baseBatchSize: 5);
-
-          if (thermalConfig.shouldPause) {
-            onStatusUpdate
-                ?.call('Device overheating - pausing to cool down...');
-            return false; // Skip this file
+          // Check thermal state and retry with delay rather than dropping the file
+          const int maxThermalRetries = 5;
+          int thermalRetries = 0;
+          while (true) {
+            final thermalConfig =
+                _thermal.getProcessingConfig(baseBatchSize: 5);
+            if (!thermalConfig.shouldPause) break;
+            if (thermalRetries >= maxThermalRetries) {
+              break; // proceed anyway after max retries
+            }
+            thermalRetries++;
+            onStatusUpdate?.call(
+                'Device overheating - pausing to cool down (retry $thermalRetries/$maxThermalRetries)...');
+            await Future.delayed(const Duration(seconds: 2));
           }
 
           try {
@@ -248,6 +237,9 @@ class EnhancedVaultRepository extends VaultRepository {
   }
 
   /// Adds files using hybrid approach
+  @Deprecated(
+      'Quarantined Phase 1 — hybrid calls container path which is unverified; use _addFilesIndividually instead')
+  // ignore: unused_element
   Future<BulkImportResult> _addFilesHybrid({
     required List<File> sourceFiles,
     required int? parentFolderId,
