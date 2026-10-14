@@ -74,6 +74,11 @@ class _SetupScreenState extends State<SetupScreen> {
               child: ListView(
                 children: [
                   const Text('Create an app password to unlock your vault.'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Your password unlocks the app. The vault encryption key is stored in the OS keystore and is separate from your password. Security questions allow resetting your unlock password only — they cannot recover your encrypted data.',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _password,
@@ -88,7 +93,8 @@ class _SetupScreenState extends State<SetupScreen> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _password2,
-                    decoration: const InputDecoration(labelText: 'Confirm password'),
+                    decoration:
+                        const InputDecoration(labelText: 'Confirm password'),
                     obscureText: true,
                     validator: (v) {
                       if (v != _password.text) return 'Passwords do not match.';
@@ -96,26 +102,40 @@ class _SetupScreenState extends State<SetupScreen> {
                     },
                   ),
                   const SizedBox(height: 24),
-                  const Text('Recovery questions (needed if you forget password):'),
+                  const Text(
+                      'Recovery questions (needed if you forget password):'),
                   const SizedBox(height: 12),
-                  
+
                   // Question 1 - Dropdown with predefined questions
                   DropdownButtonFormField<String>(
                     value: _q1Text.text.isEmpty ? null : _q1Text.text,
-                    decoration: const InputDecoration(labelText: 'Security Question 1'),
+                    decoration:
+                        const InputDecoration(labelText: 'Security Question 1'),
                     items: const [
-                      DropdownMenuItem(value: 'What is your favorite city?', child: Text('What is your favorite city?')),
-                      DropdownMenuItem(value: 'What is your mother\'s maiden name?', child: Text('What is your mother\'s maiden name?')),
-                      DropdownMenuItem(value: 'What was the name of your first pet?', child: Text('What was the name of your first pet?')),
-                      DropdownMenuItem(value: 'What is your favorite book?', child: Text('What is your favorite book?')),
-                      DropdownMenuItem(value: 'What school did you attend?', child: Text('What school did you attend?')),
+                      DropdownMenuItem(
+                          value: 'What is your favorite city?',
+                          child: Text('What is your favorite city?')),
+                      DropdownMenuItem(
+                          value: 'What is your mother\'s maiden name?',
+                          child: Text('What is your mother\'s maiden name?')),
+                      DropdownMenuItem(
+                          value: 'What was the name of your first pet?',
+                          child: Text('What was the name of your first pet?')),
+                      DropdownMenuItem(
+                          value: 'What is your favorite book?',
+                          child: Text('What is your favorite book?')),
+                      DropdownMenuItem(
+                          value: 'What school did you attend?',
+                          child: Text('What school did you attend?')),
                     ],
                     onChanged: (value) {
                       if (value != null) {
                         _q1Text.text = value;
                       }
                     },
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Please select a question' : null,
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'Please select a question'
+                        : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -124,27 +144,41 @@ class _SetupScreenState extends State<SetupScreen> {
                       labelText: 'Your Answer 1',
                       hintText: 'Enter your answer to the question above',
                     ),
-                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // Question 2 - Dropdown with predefined questions
                   DropdownButtonFormField<String>(
                     value: _q2Text.text.isEmpty ? null : _q2Text.text,
-                    decoration: const InputDecoration(labelText: 'Security Question 2'),
+                    decoration:
+                        const InputDecoration(labelText: 'Security Question 2'),
                     items: const [
-                      DropdownMenuItem(value: 'What is your nickname at home?', child: Text('What is your nickname at home?')),
-                      DropdownMenuItem(value: 'What is your favorite movie?', child: Text('What is your favorite movie?')),
-                      DropdownMenuItem(value: 'What is your favorite food?', child: Text('What is your favorite food?')),
-                      DropdownMenuItem(value: 'What was your childhood address?', child: Text('What was your childhood address?')),
-                      DropdownMenuItem(value: 'What is your favorite color?', child: Text('What is your favorite color?')),
+                      DropdownMenuItem(
+                          value: 'What is your nickname at home?',
+                          child: Text('What is your nickname at home?')),
+                      DropdownMenuItem(
+                          value: 'What is your favorite movie?',
+                          child: Text('What is your favorite movie?')),
+                      DropdownMenuItem(
+                          value: 'What is your favorite food?',
+                          child: Text('What is your favorite food?')),
+                      DropdownMenuItem(
+                          value: 'What was your childhood address?',
+                          child: Text('What was your childhood address?')),
+                      DropdownMenuItem(
+                          value: 'What is your favorite color?',
+                          child: Text('What is your favorite color?')),
                     ],
                     onChanged: (value) {
                       if (value != null) {
                         _q2Text.text = value;
                       }
                     },
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Please select a question' : null,
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'Please select a question'
+                        : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -153,15 +187,20 @@ class _SetupScreenState extends State<SetupScreen> {
                       labelText: 'Your Answer 2',
                       hintText: 'Enter your answer to the question above',
                     ),
-                    validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        (v ?? '').trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),
                   if (_error != null)
-                    Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    Text(_error!,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
                   const SizedBox(height: 8),
                   FilledButton(
                     onPressed: _busy ? null : _submit,
-                    child: _busy ? const CircularProgressIndicator() : const Text('Create vault'),
+                    child: _busy
+                        ? const CircularProgressIndicator()
+                        : const Text('Create vault'),
                   ),
                 ],
               ),
@@ -172,4 +211,3 @@ class _SetupScreenState extends State<SetupScreen> {
     );
   }
 }
-
