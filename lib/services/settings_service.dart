@@ -62,14 +62,13 @@ class SettingsService {
 
   Future<VaultStats> stats() async {
     final folders = await _isar.vaultFolders.where().anyId().findAll();
-    final files = await _isar.vaultFiles.where().anyId().findAll();
-    var total = 0;
-    for (final f in files) {
-      total += f.byteSize;
-    }
+    final fileCount = await _isar.vaultFiles.where().anyId().count();
+    // Use the O(1) running counter instead of scanning all files.
+    final settings = await _isar.appSettings.where().anyId().findFirst();
+    final total = settings?.totalBytesUsed ?? 0;
     return VaultStats(
       folderCount: folders.length,
-      fileCount: files.length,
+      fileCount: fileCount,
       totalBytes: total,
     );
   }

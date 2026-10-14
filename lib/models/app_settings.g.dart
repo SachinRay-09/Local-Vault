@@ -22,9 +22,19 @@ const AppSettingsSchema = CollectionSchema(
       name: r'customTempFolderPath',
       type: IsarType.string,
     ),
-    r'maxStorageBytes': PropertySchema(
+    r'lastReconciledAt': PropertySchema(
       id: 1,
+      name: r'lastReconciledAt',
+      type: IsarType.dateTime,
+    ),
+    r'maxStorageBytes': PropertySchema(
+      id: 2,
       name: r'maxStorageBytes',
+      type: IsarType.long,
+    ),
+    r'totalBytesUsed': PropertySchema(
+      id: 3,
+      name: r'totalBytesUsed',
       type: IsarType.long,
     )
   },
@@ -64,7 +74,9 @@ void _appSettingsSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeString(offsets[0], object.customTempFolderPath);
-  writer.writeLong(offsets[1], object.maxStorageBytes);
+  writer.writeDateTime(offsets[1], object.lastReconciledAt);
+  writer.writeLong(offsets[2], object.maxStorageBytes);
+  writer.writeLong(offsets[3], object.totalBytesUsed);
 }
 
 AppSettings _appSettingsDeserialize(
@@ -76,7 +88,9 @@ AppSettings _appSettingsDeserialize(
   final object = AppSettings();
   object.customTempFolderPath = reader.readStringOrNull(offsets[0]);
   object.id = id;
-  object.maxStorageBytes = reader.readLongOrNull(offsets[1]);
+  object.lastReconciledAt = reader.readDateTimeOrNull(offsets[1]);
+  object.maxStorageBytes = reader.readLongOrNull(offsets[2]);
+  object.totalBytesUsed = reader.readLong(offsets[3]);
   return object;
 }
 
@@ -90,7 +104,11 @@ P _appSettingsDeserializeProp<P>(
     case 0:
       return (reader.readStringOrNull(offset)) as P;
     case 1:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 2:
       return (reader.readLongOrNull(offset)) as P;
+    case 3:
+      return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -397,6 +415,80 @@ extension AppSettingsQueryFilter
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastReconciledAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastReconciledAt',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastReconciledAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastReconciledAt',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastReconciledAtEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastReconciledAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastReconciledAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastReconciledAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastReconciledAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastReconciledAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastReconciledAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastReconciledAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
       maxStorageBytesIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -469,6 +561,62 @@ extension AppSettingsQueryFilter
       ));
     });
   }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      totalBytesUsedEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'totalBytesUsed',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      totalBytesUsedGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'totalBytesUsed',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      totalBytesUsedLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'totalBytesUsed',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      totalBytesUsedBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'totalBytesUsed',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
 }
 
 extension AppSettingsQueryObject
@@ -493,6 +641,20 @@ extension AppSettingsQuerySortBy
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastReconciledAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastReconciledAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastReconciledAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastReconciledAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByMaxStorageBytes() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'maxStorageBytes', Sort.asc);
@@ -503,6 +665,19 @@ extension AppSettingsQuerySortBy
       sortByMaxStorageBytesDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'maxStorageBytes', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> sortByTotalBytesUsed() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalBytesUsed', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByTotalBytesUsedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalBytesUsed', Sort.desc);
     });
   }
 }
@@ -535,6 +710,20 @@ extension AppSettingsQuerySortThenBy
     });
   }
 
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastReconciledAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastReconciledAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastReconciledAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastReconciledAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByMaxStorageBytes() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'maxStorageBytes', Sort.asc);
@@ -545,6 +734,19 @@ extension AppSettingsQuerySortThenBy
       thenByMaxStorageBytesDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'maxStorageBytes', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy> thenByTotalBytesUsed() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalBytesUsed', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByTotalBytesUsedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalBytesUsed', Sort.desc);
     });
   }
 }
@@ -560,9 +762,22 @@ extension AppSettingsQueryWhereDistinct
   }
 
   QueryBuilder<AppSettings, AppSettings, QDistinct>
+      distinctByLastReconciledAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastReconciledAt');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
       distinctByMaxStorageBytes() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'maxStorageBytes');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct> distinctByTotalBytesUsed() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'totalBytesUsed');
     });
   }
 }
@@ -582,9 +797,22 @@ extension AppSettingsQueryProperty
     });
   }
 
+  QueryBuilder<AppSettings, DateTime?, QQueryOperations>
+      lastReconciledAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastReconciledAt');
+    });
+  }
+
   QueryBuilder<AppSettings, int?, QQueryOperations> maxStorageBytesProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'maxStorageBytes');
+    });
+  }
+
+  QueryBuilder<AppSettings, int, QQueryOperations> totalBytesUsedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'totalBytesUsed');
     });
   }
 }

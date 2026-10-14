@@ -27,7 +27,11 @@ class VaultRepository {
         ? _isar.vaultFolders.filter().parentIdIsNull()
         : _isar.vaultFolders.filter().parentIdEqualTo(parentId);
     final folders = await q.findAll();
-    // No sorting - preserve original file system order
+
+    // Apply natural sort for proper numeric ordering (1, 2, 3... 10... 100)
+    // This ensures folders named "1.folder", "2.folder", "10.folder" sort correctly
+    folders.sort((a, b) => _compareNatural(a.name, b.name));
+
     return folders;
   }
 
@@ -39,10 +43,14 @@ class VaultRepository {
     final baseQuery = parentId == null
         ? _isar.vaultFiles.filter().parentFolderIdIsNull()
         : _isar.vaultFiles.filter().parentFolderIdEqualTo(parentId);
-    
+
     List<VaultFile> files;
     if (offset != null && limit != null) {
-      files = await baseQuery.sortBySortOrder().offset(offset).limit(limit).findAll();
+      files = await baseQuery
+          .sortBySortOrder()
+          .offset(offset)
+          .limit(limit)
+          .findAll();
     } else if (offset != null) {
       files = await baseQuery.sortBySortOrder().offset(offset).findAll();
     } else if (limit != null) {
@@ -50,11 +58,11 @@ class VaultRepository {
     } else {
       files = await baseQuery.sortBySortOrder().findAll();
     }
-    
+
     // Sorted by sortOrder - preserves original file system order
     return files;
   }
-  
+
   /// Natural/alphanumeric comparison for proper sorting (1, 2, 3... 10... 100)
   /// Based on "The Alphanum Algorithm" - http://www.davekoelle.com/alphanum.html
   Future<int> countFiles({required int? parentId}) async {
@@ -88,20 +96,19 @@ class VaultRepository {
     required Uint8List? bytes,
     String? mimeType,
   }) async {
-    final settings = await _isar.appSettings.where().anyId().findFirst();
-    final maxBytes = settings?.maxStorageBytes;
+    // Load settings once — used for both the storage cap check and the counter update.
+    AppSettings settings =
+        await _isar.appSettings.where().anyId().findFirst() ?? AppSettings();
+
+    final maxBytes = settings.maxStorageBytes;
 
     final incomingBytes = sourcePath != null
         ? await File(sourcePath).length()
         : (bytes?.length ?? 0);
 
+    // O(1) storage cap check — use the running counter instead of a full scan.
     if (maxBytes != null) {
-      final allFiles = await _isar.vaultFiles.where().anyId().findAll();
-      var used = 0;
-      for (final f in allFiles) {
-        used += f.byteSize;
-      }
-      if (used + incomingBytes > maxBytes) {
+      if (settings.totalBytesUsed + incomingBytes > maxBytes) {
         throw StateError('Storage limit reached. Increase limit in Settings.');
       }
     }
@@ -135,8 +142,12 @@ class VaultRepository {
       ..createdAt = DateTime.now()
       ..sortOrder = maxSortOrder + 1;
 
+    // Update the running counter in the same transaction.
+    settings.totalBytesUsed += writeResult.byteSize;
+
     await _isar.writeTxn(() async {
       await _isar.vaultFiles.put(file);
+      await _isar.appSettings.put(settings);
     });
     return file;
   }
@@ -146,7 +157,7 @@ class VaultRepository {
     final query = parentFolderId == null
         ? _isar.vaultFiles.filter().parentFolderIdIsNull()
         : _isar.vaultFiles.filter().parentFolderIdEqualTo(parentFolderId);
-    
+
     final files = await query.sortBySortOrderDesc().limit(1).findAll();
     return files.isEmpty ? -1 : files.first.sortOrder;
   }
@@ -155,7 +166,7 @@ class VaultRepository {
   /// Files should already have encrypted blobs written to disk
   Future<void> batchSaveFiles(List<VaultFile> files) async {
     if (files.isEmpty) return;
-    
+
     await _isar.writeTxn(() async {
       await _isar.vaultFiles.putAll(files);
     });
@@ -199,14 +210,22 @@ class VaultRepository {
     final file = await _isar.vaultFiles.get(fileId);
     if (file == null) return;
 
+    // Decrement the running counter in the same transaction.
+    final settings =
+        await _isar.appSettings.where().anyId().findFirst() ?? AppSettings();
+    settings.totalBytesUsed = (settings.totalBytesUsed - file.byteSize)
+        .clamp(0, double.maxFinite.toInt());
+
     await _isar.writeTxn(() async {
       await _isar.vaultFiles.delete(fileId);
+      await _isar.appSettings.put(settings);
     });
 
     // Best-effort delete blob on disk.
     try {
       final blobsDir = await VaultPaths.ensureVaultBlobsDir();
-      final blob = File('${blobsDir.path}${Platform.pathSeparator}${file.storedBlobName}');
+      final blob = File(
+          '${blobsDir.path}${Platform.pathSeparator}${file.storedBlobName}');
       if (await blob.exists()) {
         await blob.delete();
       }
@@ -224,13 +243,17 @@ class VaultRepository {
 
     while (toVisit.isNotEmpty) {
       final current = toVisit.removeLast();
-      final childFolders = await _isar.vaultFolders.filter().parentIdEqualTo(current).findAll();
+      final childFolders =
+          await _isar.vaultFolders.filter().parentIdEqualTo(current).findAll();
       for (final f in childFolders) {
         folderIds.add(f.id);
         toVisit.add(f.id);
       }
 
-      final files = await _isar.vaultFiles.filter().parentFolderIdEqualTo(current).findAll();
+      final files = await _isar.vaultFiles
+          .filter()
+          .parentFolderIdEqualTo(current)
+          .findAll();
       for (final vf in files) {
         fileIds.add(vf.id);
         blobNames.add(vf.storedBlobName);
@@ -272,7 +295,8 @@ class VaultRepository {
     return path.reversed.toList();
   }
 
-  Future<List<VaultFolder>> searchFolders(String query, {int limit = 50}) async {
+  Future<List<VaultFolder>> searchFolders(String query,
+      {int limit = 50}) async {
     final q = query.trim();
     if (q.isEmpty) return [];
     // Case-insensitive contains - no sorting, preserve original order
@@ -290,7 +314,7 @@ class VaultRepository {
     final files = await _isar.vaultFiles
         .filter()
         .originalNameContains(q, caseSensitive: false)
-        .sortBySortOrder()  // Sort by sortOrder to preserve file system order
+        .sortBySortOrder() // Sort by sortOrder to preserve file system order
         .limit(limit)
         .findAll();
     return files;
@@ -316,7 +340,8 @@ class VaultRepository {
       throw StateError('Cannot move a folder into itself.');
     }
     if (newParentId != null) {
-      final invalid = await _isAncestorOrSelf(ancestorId: folderId, nodeId: newParentId);
+      final invalid =
+          await _isAncestorOrSelf(ancestorId: folderId, nodeId: newParentId);
       if (invalid) {
         throw StateError('Cannot move a folder into one of its subfolders.');
       }
@@ -331,7 +356,44 @@ class VaultRepository {
     });
   }
 
-  Future<bool> _isAncestorOrSelf({required int ancestorId, required int nodeId}) async {
+  /// Batch move multiple folders to a new parent
+  /// Validates that no folder is moved into itself or its descendants
+  Future<void> batchMoveFolders({
+    required List<int> folderIds,
+    required int? newParentId,
+  }) async {
+    if (folderIds.isEmpty) return;
+
+    // Validate each folder
+    for (final folderId in folderIds) {
+      if (newParentId == folderId) {
+        throw StateError('Cannot move a folder into itself.');
+      }
+      if (newParentId != null) {
+        final invalid =
+            await _isAncestorOrSelf(ancestorId: folderId, nodeId: newParentId);
+        if (invalid) {
+          throw StateError('Cannot move a folder into one of its subfolders.');
+        }
+      }
+    }
+
+    // Batch update in single transaction for performance
+    await _isar.writeTxn(() async {
+      final now = DateTime.now();
+      for (final folderId in folderIds) {
+        final folder = await _isar.vaultFolders.get(folderId);
+        if (folder != null) {
+          folder.parentId = newParentId;
+          folder.updatedAt = now;
+          await _isar.vaultFolders.put(folder);
+        }
+      }
+    });
+  }
+
+  Future<bool> _isAncestorOrSelf(
+      {required int ancestorId, required int nodeId}) async {
     var currentId = nodeId;
     while (true) {
       if (currentId == ancestorId) return true;
@@ -343,8 +405,94 @@ class VaultRepository {
     }
   }
 
+  /// Natural/alphanumeric comparison for proper sorting (1, 2, 3... 10... 100)
+  /// Based on "The Alphanum Algorithm" - http://www.davekoelle.com/alphanum.html
+  /// This ensures folders named "1.folder", "2.folder", "10.folder" sort correctly
+  int _compareNatural(String a, String b) {
+    final aLower = a.toLowerCase();
+    final bLower = b.toLowerCase();
+
+    int aIndex = 0;
+    int bIndex = 0;
+
+    while (aIndex < aLower.length && bIndex < bLower.length) {
+      final aChar = aLower[aIndex];
+      final bChar = bLower[bIndex];
+
+      // Check if both are digits
+      if (_isDigit(aChar) && _isDigit(bChar)) {
+        // Extract full numbers
+        final aNum = _extractNumber(aLower, aIndex);
+        final bNum = _extractNumber(bLower, bIndex);
+
+        // Compare numbers numerically
+        if (aNum.value != bNum.value) {
+          return aNum.value.compareTo(bNum.value);
+        }
+
+        // Move indices past the numbers
+        aIndex = aNum.endIndex;
+        bIndex = bNum.endIndex;
+      } else {
+        // Compare characters normally
+        if (aChar != bChar) {
+          return aChar.compareTo(bChar);
+        }
+        aIndex++;
+        bIndex++;
+      }
+    }
+
+    // If one string is a prefix of the other
+    return aLower.length.compareTo(bLower.length);
+  }
+
+  bool _isDigit(String char) {
+    return char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57;
+  }
+
+  _NumberExtraction _extractNumber(String str, int startIndex) {
+    int endIndex = startIndex;
+    while (endIndex < str.length && _isDigit(str[endIndex])) {
+      endIndex++;
+    }
+    final numStr = str.substring(startIndex, endIndex);
+    return _NumberExtraction(
+      value: int.parse(numStr),
+      endIndex: endIndex,
+    );
+  }
+
+  /// Recomputes `AppSettings.totalBytesUsed` by summing all VaultFile rows.
+  /// Call on startup when `lastReconciledAt` is null to handle files that were
+  /// added before the running counter existed.
+  Future<void> reconcileStorageCounter() async {
+    final allFiles = await _isar.vaultFiles.where().anyId().findAll();
+    var total = 0;
+    for (final f in allFiles) {
+      total += f.byteSize;
+    }
+
+    final settings =
+        await _isar.appSettings.where().anyId().findFirst() ?? AppSettings();
+    settings.totalBytesUsed = total;
+    settings.lastReconciledAt = DateTime.now();
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(settings);
+    });
+  }
+
   /// Disposes resources (override in subclasses if needed)
   void dispose() {
     // Base implementation - override in subclasses
   }
+}
+
+/// Helper class for natural sort number extraction
+class _NumberExtraction {
+  _NumberExtraction({required this.value, required this.endIndex});
+
+  final int value;
+  final int endIndex;
 }

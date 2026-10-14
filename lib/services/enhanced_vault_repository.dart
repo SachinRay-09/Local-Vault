@@ -360,11 +360,8 @@ class EnhancedVaultRepository extends VaultRepository {
         totalNewSize += await file.length();
       }
 
-      final allFiles = await _isar.vaultFiles.where().anyId().findAll();
-      int usedSize = 0;
-      for (final f in allFiles) {
-        usedSize += f.byteSize;
-      }
+      // Use the O(1) running counter instead of a full file scan.
+      final usedSize = settings?.totalBytesUsed ?? 0;
 
       if (usedSize + totalNewSize > maxBytes) {
         final neededMB =
