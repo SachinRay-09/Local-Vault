@@ -65,13 +65,13 @@ class ImportExportService {
   }) async {
     final password = usePassword ? _randomExportPassword() : '';
 
-    final staging = await Directory.systemTemp.createTemp('local_vault_export_');
+    final staging =
+        await Directory.systemTemp.createTemp('local_vault_export_');
     try {
       await _writeStagingFromDb(staging);
 
-      final encoder = usePassword 
-          ? ZipFileEncoder(password: password)
-          : ZipFileEncoder();
+      final encoder =
+          usePassword ? ZipFileEncoder(password: password) : ZipFileEncoder();
       encoder.create(outputZipPath);
       await encoder.addDirectory(staging, includeDirName: false);
       await encoder.close();
@@ -85,6 +85,7 @@ class ImportExportService {
   }
 
   /// Export single folder to ZIP
+  // Windows benchmark
   Future<ExportAllResult> exportFolderToZip({
     required int folderId,
     required String outputZipPath,
@@ -92,16 +93,26 @@ class ImportExportService {
   }) async {
     final password = usePassword ? _randomExportPassword() : '';
 
-    final staging = await Directory.systemTemp.createTemp('local_vault_folder_export_');
+    final staging =
+        await Directory.systemTemp.createTemp('local_vault_folder_export_');
+    final swExport = Stopwatch()..start();
     try {
       await _writeFolderStagingFromDb(staging, folderId);
 
-      final encoder = usePassword 
-          ? ZipFileEncoder(password: password)
-          : ZipFileEncoder();
+      final encoder =
+          usePassword ? ZipFileEncoder(password: password) : ZipFileEncoder();
       encoder.create(outputZipPath);
       await encoder.addDirectory(staging, includeDirName: false);
       await encoder.close();
+
+      swExport.stop();
+      final zipFile = File(outputZipPath);
+      final zipBytes = await zipFile.exists() ? await zipFile.length() : 0;
+      final mbPerSecond = swExport.elapsedMilliseconds > 0
+          ? (zipBytes / (1024 * 1024)) / (swExport.elapsedMilliseconds / 1000.0)
+          : 0.0;
+      debugPrint(
+          '[Benchmark] Export: ${swExport.elapsedMilliseconds}ms, ${mbPerSecond.toStringAsFixed(2)} MB/s');
 
       return ExportAllResult(zipPath: outputZipPath, password: password);
     } finally {
@@ -119,12 +130,23 @@ class ImportExportService {
     // Use documents directory instead of cache for better reliability on Android
     final docsDir = await getApplicationDocumentsDirectory();
     final importId = DateTime.now().millisecondsSinceEpoch.toString();
-    final extractDir = Directory(path.join(docsDir.path, 'vault_import_$importId'));
-    
+    final extractDir =
+        Directory(path.join(docsDir.path, 'vault_import_$importId'));
+
+    final swZip = Stopwatch()..start();
     try {
       // Use robust ZIP extraction with documents directory
       await _extractZipManually(zipPath, extractDir.path, password);
-      return _importExtractedTree(extractDir, destinationFolderId: destinationFolderId);
+      final result = _importExtractedTree(extractDir,
+          destinationFolderId: destinationFolderId);
+      swZip.stop();
+      final zipBytes = await File(zipPath).length();
+      final mbPerSecond = swZip.elapsedMilliseconds > 0
+          ? (zipBytes / (1024 * 1024)) / (swZip.elapsedMilliseconds / 1000.0)
+          : 0.0;
+      debugPrint(
+          '[Benchmark] ZIP import: ${swZip.elapsedMilliseconds}ms, ${mbPerSecond.toStringAsFixed(2)} MB/s');
+      return result;
     } finally {
       try {
         await extractDir.delete(recursive: true);
@@ -133,11 +155,12 @@ class ImportExportService {
   }
 
   /// Completely robust ZIP extraction with proper file system handling
-  /// Uses streaming for memory efficiency with large files
-  Future<void> _extractZipManually(String zipPath, String extractPath, String password) async {
+  /// Always uses memory-based extraction for maximum reliability
+  Future<void> _extractZipManually(
+      String zipPath, String extractPath, String password) async {
     try {
       debugPrint('Starting robust ZIP extraction from: $zipPath');
-      
+
       // Verify the ZIP file exists and is accessible
       final zipFile = File(zipPath);
       if (!await zipFile.exists()) {
@@ -147,19 +170,13 @@ class ImportExportService {
       // Check file size
       final fileSize = await zipFile.length();
       debugPrint('ZIP file size: $fileSize bytes');
-      
+
       if (fileSize == 0) {
         throw Exception('ZIP file is empty');
       }
-      
-      // Use streaming for files > 100MB
-      if (fileSize > 100 * 1024 * 1024) {
-        debugPrint('Using streaming extraction for large file');
-        await _extractZipStreaming(zipPath, extractPath, password);
-        return;
-      }
 
-      // For smaller files, use memory-based extraction (faster)
+      // Always use memory-based extraction for reliability
+      // Streaming can fail with manually modified or certain ZIP formats
       final bytes = await zipFile.readAsBytes();
       if (bytes.isEmpty) {
         throw Exception('ZIP file could not be read or is empty');
@@ -173,7 +190,7 @@ class ImportExportService {
         if (password.isNotEmpty) {
           debugPrint('Attempting to decode password-protected ZIP');
           archive = ZipDecoder().decodeBytes(
-            bytes, 
+            bytes,
             password: password,
             verify: true, // Throws if password is wrong
           );
@@ -183,7 +200,7 @@ class ImportExportService {
         }
       } catch (e) {
         debugPrint('ZIP decode error: $e');
-        if (e.toString().toLowerCase().contains('password') || 
+        if (e.toString().toLowerCase().contains('password') ||
             e.toString().toLowerCase().contains('wrong') ||
             e.toString().toLowerCase().contains('invalid') ||
             e.toString().toLowerCase().contains('bad')) {
@@ -191,7 +208,8 @@ class ImportExportService {
         } else if (e.toString().toLowerCase().contains('zip')) {
           throw Exception('Invalid or corrupted ZIP file: $e');
         }
-        throw Exception('Failed to decode ZIP file. The file may be corrupted or use an unsupported format. Error: $e');
+        throw Exception(
+            'Failed to decode ZIP file. The file may be corrupted or use an unsupported format. Error: $e');
       }
 
       if (archive.isEmpty) {
@@ -203,7 +221,7 @@ class ImportExportService {
       // Create extraction directory with proper permissions
       final extractDir = Directory(extractPath);
       await extractDir.create(recursive: true);
-      
+
       // Verify the extraction directory was created
       if (!await extractDir.exists()) {
         throw Exception('Failed to create extraction directory: $extractPath');
@@ -212,52 +230,56 @@ class ImportExportService {
       // Extract files using completely robust approach
       int extractedCount = 0;
       int skippedCount = 0;
-      
+
       for (int i = 0; i < archive.length; i++) {
         final entry = archive[i];
-        
+
         if (entry.isFile && entry.content != null) {
           try {
             // Use path.join for proper path handling
             final filePath = path.join(extractPath, entry.name);
             debugPrint('Extracting file: ${entry.name} -> $filePath');
-            
+
             final outputFile = File(filePath);
-            
+
             // Create parent directories recursively and verify they exist
             await outputFile.parent.create(recursive: true);
-            
+
             // Double-check parent directory exists
             if (!await outputFile.parent.exists()) {
-              debugPrint('Failed to create parent directory for: ${entry.name}');
+              debugPrint(
+                  'Failed to create parent directory for: ${entry.name}');
               skippedCount++;
               continue;
             }
-            
+
             // Write file content with proper error handling
             final content = entry.content as List<int>;
             if (content.isNotEmpty) {
               // Write the file and immediately verify it exists
               await outputFile.writeAsBytes(content, flush: true);
-              
+
               // Verify the file was actually written
               if (await outputFile.exists()) {
                 final writtenSize = await outputFile.length();
                 if (writtenSize == content.length) {
                   extractedCount++;
-                  debugPrint('Successfully extracted: ${entry.name} ($writtenSize bytes)');
+                  debugPrint(
+                      'Successfully extracted: ${entry.name} ($writtenSize bytes)');
                 } else {
-                  debugPrint('File size mismatch for ${entry.name}: expected ${content.length}, got $writtenSize');
+                  debugPrint(
+                      'File size mismatch for ${entry.name}: expected ${content.length}, got $writtenSize');
                   skippedCount++;
                 }
               } else {
                 debugPrint('File was not created: ${entry.name}');
                 skippedCount++;
               }
-              
+
               // Log progress for every 5 files or on last file
               if (extractedCount % 5 == 0 || i == archive.length - 1) {
-                debugPrint('Progress: $extractedCount/${archive.length} files extracted...');
+                debugPrint(
+                    'Progress: $extractedCount/${archive.length} files extracted...');
               }
             } else {
               debugPrint('Skipping empty file: ${entry.name}');
@@ -287,11 +309,13 @@ class ImportExportService {
       }
 
       if (extractedCount == 0) {
-        throw Exception('No files were successfully extracted from the ZIP. The archive may be empty or corrupted.');
+        throw Exception(
+            'No files were successfully extracted from the ZIP. The archive may be empty or corrupted.');
       }
 
-      debugPrint('ZIP extraction completed: $extractedCount files extracted, $skippedCount skipped');
-      
+      debugPrint(
+          'ZIP extraction completed: $extractedCount files extracted, $skippedCount skipped');
+
       // Final verification - list all files in extraction directory
       final extractedFiles = <String>[];
       await for (final entity in extractDir.list(recursive: true)) {
@@ -299,8 +323,8 @@ class ImportExportService {
           extractedFiles.add(entity.path);
         }
       }
-      debugPrint('Final verification: ${extractedFiles.length} files found in extraction directory');
-      
+      debugPrint(
+          'Final verification: ${extractedFiles.length} files found in extraction directory');
     } catch (e) {
       // Clean up extraction directory on failure
       try {
@@ -313,79 +337,6 @@ class ImportExportService {
         debugPrint('Failed to cleanup extraction directory: $cleanupError');
       }
       rethrow;
-    }
-  }
-
-  /// Streaming ZIP extraction for large files (memory-efficient)
-  Future<void> _extractZipStreaming(String zipPath, String extractPath, String password) async {
-    try {
-      debugPrint('Using streaming extraction for large ZIP file');
-      
-      // Use InputFileStream for memory-efficient extraction
-      final inputStream = InputFileStream(zipPath);
-      
-      Archive archive;
-      try {
-        if (password.isNotEmpty) {
-          archive = ZipDecoder().decodeBuffer(inputStream, password: password, verify: true);
-        } else {
-          archive = ZipDecoder().decodeBuffer(inputStream);
-        }
-      } catch (e) {
-        await inputStream.close();
-        if (e.toString().toLowerCase().contains('password')) {
-          throw Exception('Incorrect password for ZIP file');
-        }
-        throw Exception('Failed to decode ZIP: $e');
-      } finally {
-        await inputStream.close();
-      }
-
-      if (archive.isEmpty) {
-        throw Exception('ZIP archive is empty');
-      }
-
-      debugPrint('ZIP contains ${archive.length} entries (streaming mode)');
-
-      final extractDir = Directory(extractPath);
-      await extractDir.create(recursive: true);
-
-      int extractedCount = 0;
-      for (final entry in archive) {
-        if (entry.isFile && entry.content != null) {
-          try {
-            final filePath = path.join(extractPath, entry.name);
-            final outputFile = File(filePath);
-            
-            await outputFile.parent.create(recursive: true);
-            
-            final content = entry.content as List<int>;
-            await outputFile.writeAsBytes(content, flush: true);
-            
-            if (await outputFile.exists()) {
-              extractedCount++;
-            }
-            
-            // Clear entry from memory
-            entry.clear();
-            
-          } catch (e) {
-            debugPrint('Failed to extract ${entry.name}: $e');
-          }
-        }
-      }
-
-      // Clear archive from memory
-      archive.clear();
-
-      if (extractedCount == 0) {
-        throw Exception('No files were successfully extracted');
-      }
-
-      debugPrint('Streaming extraction completed: $extractedCount files');
-      
-    } catch (e) {
-      throw Exception('Streaming ZIP extraction failed: $e');
     }
   }
 
@@ -413,8 +364,12 @@ class ImportExportService {
     final masterKey32 = await secureStorage.getOrCreateMasterKey32();
 
     for (final file in files) {
-      final relDir = file.parentFolderId == null ? '' : folderRelPath(file.parentFolderId!);
-      final outDir = relDir.isEmpty ? stagingRoot : Directory('${stagingRoot.path}${Platform.pathSeparator}$relDir');
+      final relDir = file.parentFolderId == null
+          ? ''
+          : folderRelPath(file.parentFolderId!);
+      final outDir = relDir.isEmpty
+          ? stagingRoot
+          : Directory('${stagingRoot.path}${Platform.pathSeparator}$relDir');
       await outDir.create(recursive: true);
 
       final outPath = _uniqueFilePath(outDir, file.originalName);
@@ -428,33 +383,38 @@ class ImportExportService {
   }
 
   /// Write staging directory for a single folder and its subfolders
-  Future<void> _writeFolderStagingFromDb(Directory stagingRoot, int folderId) async {
+  Future<void> _writeFolderStagingFromDb(
+      Directory stagingRoot, int folderId) async {
     final isar = IsarDb.instance;
-    
+
     // Get all folders and files
-    final allFolders = await isar.vaultFolders.filter().idGreaterThan(0).findAll();
+    final allFolders =
+        await isar.vaultFolders.filter().idGreaterThan(0).findAll();
     final allFiles = await isar.vaultFiles.filter().idGreaterThan(0).findAll();
 
     // Build folder hierarchy
     final folderById = <int, VaultFolder>{for (final f in allFolders) f.id: f};
-    
+
     // Get the root folder being exported
     final rootFolder = folderById[folderId];
     if (rootFolder == null) {
       throw Exception('Folder not found: $folderId');
     }
-    
+
     // Create root folder in staging directory to preserve structure
-    final rootFolderDir = Directory('${stagingRoot.path}${Platform.pathSeparator}${rootFolder.name}');
+    final rootFolderDir = Directory(
+        '${stagingRoot.path}${Platform.pathSeparator}${rootFolder.name}');
     await rootFolderDir.create(recursive: true);
-    
+
     // Find all descendant folders of the target folder
     final descendantIds = <int>{folderId};
     bool foundNew = true;
     while (foundNew) {
       foundNew = false;
       for (final folder in allFolders) {
-        if (folder.parentId != null && descendantIds.contains(folder.parentId) && !descendantIds.contains(folder.id)) {
+        if (folder.parentId != null &&
+            descendantIds.contains(folder.parentId) &&
+            !descendantIds.contains(folder.id)) {
           descendantIds.add(folder.id);
           foundNew = true;
         }
@@ -462,7 +422,11 @@ class ImportExportService {
     }
 
     // Filter files that belong to this folder tree
-    final files = allFiles.where((f) => f.parentFolderId != null && descendantIds.contains(f.parentFolderId!)).toList();
+    final files = allFiles
+        .where((f) =>
+            f.parentFolderId != null &&
+            descendantIds.contains(f.parentFolderId!))
+        .toList();
 
     final pathMemo = <int, String>{};
 
@@ -471,13 +435,13 @@ class ImportExportService {
         // Root folder of export - use its name
         return rootFolder.name;
       }
-      
+
       final cached = pathMemo[id];
       if (cached != null) return cached;
-      
+
       final folder = folderById[id];
       if (folder == null) return rootFolder.name;
-      
+
       final parentId = folder.parentId;
       if (parentId == folderId) {
         // Direct child of root folder
@@ -485,8 +449,9 @@ class ImportExportService {
         pathMemo[id] = p;
         return p;
       }
-      
-      final parentPath = parentId == null ? rootFolder.name : folderRelPath(parentId);
+
+      final parentPath =
+          parentId == null ? rootFolder.name : folderRelPath(parentId);
       final p = '$parentPath${Platform.pathSeparator}${folder.name}';
       pathMemo[id] = p;
       return p;
@@ -496,7 +461,8 @@ class ImportExportService {
 
     for (final file in files) {
       final relDir = folderRelPath(file.parentFolderId!);
-      final outDir = Directory('${stagingRoot.path}${Platform.pathSeparator}$relDir');
+      final outDir =
+          Directory('${stagingRoot.path}${Platform.pathSeparator}$relDir');
       await outDir.create(recursive: true);
 
       final outPath = _uniqueFilePath(outDir, file.originalName);
@@ -519,7 +485,8 @@ class ImportExportService {
     final directories = <Directory>[];
     final files = <File>[];
 
-    await for (final entity in extractRoot.list(recursive: true, followLinks: false)) {
+    await for (final entity
+        in extractRoot.list(recursive: true, followLinks: false)) {
       if (entity is Directory) directories.add(entity);
       if (entity is File) files.add(entity);
     }
@@ -553,7 +520,8 @@ class ImportExportService {
       filesImported++;
     }
 
-    return ImportResult(foldersCreated: foldersCreated, filesImported: filesImported);
+    return ImportResult(
+        foldersCreated: foldersCreated, filesImported: filesImported);
   }
 
   static String _uniqueFilePath(Directory dir, String desiredName) {
@@ -606,4 +574,3 @@ class ImportExportService {
     return buf.toString();
   }
 }
-

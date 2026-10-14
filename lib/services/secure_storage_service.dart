@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/api.dart' show KeyDerivator;
 import 'package:pointycastle/digests/sha256.dart';
@@ -15,7 +15,8 @@ class SecureStorageService {
 
   static const FlutterSecureStorage _sharedStorage = FlutterSecureStorage();
 
-  static SecureStorageService get instance => SecureStorageService._(_sharedStorage);
+  static SecureStorageService get instance =>
+      SecureStorageService._(_sharedStorage);
 
   // Keys (secure storage)
   static const String kMasterKeyB64 = 'master_key_b64';
@@ -68,7 +69,8 @@ class SecureStorageService {
       }
     } else {
       final iters = int.tryParse(itersStr) ?? 120000;
-      final got = _pbkdf2Sha256(password, salt, iterations: iters, outLen: expected.length);
+      final got = _pbkdf2Sha256(password, salt,
+          iterations: iters, outLen: expected.length);
       ok = _constantTimeEquals(got, expected);
     }
 
@@ -76,7 +78,8 @@ class SecureStorageService {
     return ok;
   }
 
-  Future<void> writeString(String key, String value) => _storage.write(key: key, value: value);
+  Future<void> writeString(String key, String value) =>
+      _storage.write(key: key, value: value);
   Future<String?> readString(String key) => _storage.read(key: key);
 
   Future<Uint8List> getOrCreateMasterKey32() async {
@@ -92,7 +95,8 @@ class SecureStorageService {
 
   static Uint8List _randomBytes(int length) {
     final r = Random.secure();
-    return Uint8List.fromList(List<int>.generate(length, (_) => r.nextInt(256)));
+    return Uint8List.fromList(
+        List<int>.generate(length, (_) => r.nextInt(256)));
   }
 
   static Uint8List _saltedSha256(String secret, Uint8List salt) {
@@ -106,9 +110,13 @@ class SecureStorageService {
     required int iterations,
     required int outLen,
   }) {
+    final sw = Stopwatch()..start();
     final KeyDerivator derivator = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))
       ..init(Pbkdf2Parameters(salt, iterations, outLen));
-    return derivator.process(Uint8List.fromList(utf8.encode(password)));
+    final result = derivator.process(Uint8List.fromList(utf8.encode(password)));
+    sw.stop();
+    debugPrint('[Benchmark] KDF duration: ${sw.elapsedMilliseconds}ms');
+    return result;
   }
 
   Future<bool> isLockedOut() async {
@@ -165,4 +173,3 @@ class SecureStorageService {
     return diff == 0;
   }
 }
-

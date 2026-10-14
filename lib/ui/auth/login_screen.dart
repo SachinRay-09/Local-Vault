@@ -34,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _unlock() async {
     setState(() => _error = null);
     setState(() => _busy = true);
+    final swUnlock = Stopwatch()..start();
     try {
       final remaining = await widget.auth.lockRemaining();
       if (remaining != null && remaining.inSeconds > 0) {
@@ -48,10 +49,13 @@ class _LoginScreenState extends State<LoginScreen> {
         final r = await widget.auth.lockRemaining();
         setState(() {
           _error = 'Incorrect password.';
-          _lockHint = r == null ? null : 'Locked. Try again in ${r.inSeconds}s.';
+          _lockHint =
+              r == null ? null : 'Locked. Try again in ${r.inSeconds}s.';
         });
         return;
       }
+      swUnlock.stop();
+      debugPrint('[Benchmark] Total unlock: ${swUnlock.elapsedMilliseconds}ms');
       widget.onUnlocked();
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -103,17 +107,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 if (_error != null)
-                  Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  Text(_error!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
                 if (_lockHint != null) ...[
                   const SizedBox(height: 6),
-                  Text(_lockHint!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  Text(_lockHint!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
                 ],
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _busy ? null : _unlock,
-                    child: _busy ? const CircularProgressIndicator() : const Text('Unlock'),
+                    child: _busy
+                        ? const CircularProgressIndicator()
+                        : const Text('Unlock'),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -129,4 +139,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

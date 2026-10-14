@@ -31,7 +31,15 @@ class BulkImportService {
   final dynamic secureStorage; // SecureStorageService
 
   static const List<String> _supportedImageExtensions = [
-    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.apng', '.avif'
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.bmp',
+    '.webp',
+    '.svg',
+    '.apng',
+    '.avif'
   ];
 
   /// Import a folder and all its contents into the vault using isolate-based processing
@@ -54,7 +62,7 @@ class BulkImportService {
       // First, count total files for progress tracking
       final allFiles = await _getAllFiles(sourceDir);
       final totalFiles = allFiles.length;
-      
+
       onProgress('Found $totalFiles files to import...');
 
       // Create the root folder in vault
@@ -67,9 +75,11 @@ class BulkImportService {
 
       // Process files in smaller batches with isolate-based encryption
       const batchSize = 3; // Reduced batch size for isolate processing
+      final swBatch = Stopwatch()..start();
+      int batchBytesTotal = 0;
       for (int i = 0; i < allFiles.length; i += batchSize) {
         final batch = allFiles.skip(i).take(batchSize).toList();
-        
+
         // Process batch using isolates for better performance
         await _processBatchWithIsolates(
           batch,
@@ -80,12 +90,21 @@ class BulkImportService {
           (processed) => totalProcessed = processed,
           (imported) => filesImported += imported,
           (error) => errors.add(error),
+          (bytes) => batchBytesTotal += bytes,
         );
 
         // Longer delay between batches to prevent CPU overload
         await Future.delayed(const Duration(milliseconds: 100));
       }
-
+      swBatch.stop();
+      if (swBatch.elapsedMilliseconds > 0) {
+        final filesPerSecond =
+            filesImported / (swBatch.elapsedMilliseconds / 1000.0);
+        final mbPerSecond = (batchBytesTotal / (1024 * 1024)) /
+            (swBatch.elapsedMilliseconds / 1000.0);
+        debugPrint(
+            '[Benchmark] Import: ${filesPerSecond.toStringAsFixed(1)} files/s, ${mbPerSecond.toStringAsFixed(2)} MB/s');
+      }
     } catch (e) {
       errors.add('Import failed: $e');
       rethrow;
@@ -109,16 +128,18 @@ class BulkImportService {
     Function(int) updateProcessed,
     Function(int) updateImported,
     Function(String) addError,
+    Function(int) addBytes,
   ) async {
     for (final fileInfo in batch) {
       try {
         currentProcessed++;
-        onProgress('Processing ${fileInfo.relativePath} ($currentProcessed/$totalFiles)');
+        onProgress(
+            'Processing ${fileInfo.relativePath} ($currentProcessed/$totalFiles)');
 
         // Create folder structure if needed
         final folderPath = path.dirname(fileInfo.relativePath);
         int? parentFolderId = rootFolderId;
-        
+
         if (folderPath != '.') {
           parentFolderId = await _ensureFolderStructure(
             folderPath,
@@ -126,15 +147,25 @@ class BulkImportService {
           );
         }
 
-        // Import the file using isolate-based processing
+        // Measure per-file import duration and byte count
+        final swFile = Stopwatch()..start();
+        final fileBytes = await fileInfo.file.length();
         await _importFileWithIsolate(
           fileInfo.file,
           parentFolderId,
         );
-        
+        swFile.stop();
+        addBytes(fileBytes);
+
+        final fileMb = fileBytes / (1024 * 1024);
+        final fileMbs = swFile.elapsedMilliseconds > 0
+            ? fileMb / (swFile.elapsedMilliseconds / 1000.0)
+            : 0.0;
+        debugPrint(
+            '[Benchmark] Import: file $fileBytes bytes in ${swFile.elapsedMilliseconds}ms (${fileMbs.toStringAsFixed(2)} MB/s)');
+
         updateImported(1);
         updateProcessed(currentProcessed);
-
       } catch (e) {
         addError('Failed to import ${fileInfo.relativePath}: $e');
         debugPrint('Import error: $e');
@@ -186,25 +217,25 @@ class BulkImportService {
   int _compareNatural(String a, String b) {
     final aLower = a.toLowerCase();
     final bLower = b.toLowerCase();
-    
+
     int aIndex = 0;
     int bIndex = 0;
-    
+
     while (aIndex < aLower.length && bIndex < bLower.length) {
       final aChar = aLower[aIndex];
       final bChar = bLower[bIndex];
-      
+
       // Check if both are digits
       if (_isDigit(aChar) && _isDigit(bChar)) {
         // Extract full numbers
         final aNum = _extractNumber(aLower, aIndex);
         final bNum = _extractNumber(bLower, bIndex);
-        
+
         // Compare numbers numerically
         if (aNum.value != bNum.value) {
           return aNum.value.compareTo(bNum.value);
         }
-        
+
         // Move indices past the numbers
         aIndex = aNum.endIndex;
         bIndex = bNum.endIndex;
@@ -217,15 +248,15 @@ class BulkImportService {
         bIndex++;
       }
     }
-    
+
     // If one string is a prefix of the other
     return aLower.length.compareTo(bLower.length);
   }
-  
+
   bool _isDigit(String char) {
     return char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57;
   }
-  
+
   _NumberExtraction _extractNumber(String str, int startIndex) {
     int endIndex = startIndex;
     while (endIndex < str.length && _isDigit(str[endIndex])) {
@@ -239,7 +270,8 @@ class BulkImportService {
   }
 
   /// Ensure folder structure exists, creating folders as needed
-  Future<int> _ensureFolderStructure(String folderPath, int rootFolderId) async {
+  Future<int> _ensureFolderStructure(
+      String folderPath, int rootFolderId) async {
     final parts = path.split(folderPath);
     int currentParentId = rootFolderId;
 
@@ -248,7 +280,8 @@ class BulkImportService {
 
       // Check if folder already exists
       final existingFolders = await repo.listFolders(parentId: currentParentId);
-      final existingFolder = existingFolders.where((f) => f.name == part).firstOrNull;
+      final existingFolder =
+          existingFolders.where((f) => f.name == part).firstOrNull;
 
       if (existingFolder != null) {
         currentParentId = existingFolder.id;
@@ -289,14 +322,14 @@ class BulkImportService {
 
 class _FileInfo {
   _FileInfo({required this.file, required this.relativePath});
-  
+
   final File file;
   final String relativePath;
 }
 
 class _NumberExtraction {
   _NumberExtraction({required this.value, required this.endIndex});
-  
+
   final int value;
   final int endIndex;
 }
