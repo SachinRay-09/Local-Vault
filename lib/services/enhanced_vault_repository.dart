@@ -21,26 +21,28 @@ class EnhancedVaultRepository extends VaultRepository {
   final FolderCryptoService _folderCrypto = FolderCryptoService();
   final ThermalProtectionService _thermal = ThermalProtectionService.instance;
   final MemoryManagementService _memory = MemoryManagementService.instance;
-  final HardwareAccelerationService _hardware = HardwareAccelerationService.instance;
+  final HardwareAccelerationService _hardware =
+      HardwareAccelerationService.instance;
   final BatteryAwarenessService _battery = BatteryAwarenessService.instance;
-  final ProgressiveLoadingService _progressive = ProgressiveLoadingService.instance;
-  
+  final ProgressiveLoadingService _progressive =
+      ProgressiveLoadingService.instance;
+
   // Access to Isar database
   Isar get _isar => IsarDb.instance;
-  
+
   EnhancedVaultRepository({
     required super.crypto,
     required super.secureStorage,
   }) {
     // Start thermal monitoring for performance optimization
     _thermal.startMonitoring();
-    
+
     // Initialize hardware acceleration if not already done
     if (_hardware.capabilities == null) {
       _hardware.initialize();
     }
   }
-  
+
   /// Adds multiple media files with smart encryption strategy
   Future<BulkImportResult> addMultipleMedia({
     required List<File> sourceFiles,
@@ -55,21 +57,23 @@ class EnhancedVaultRepository extends VaultRepository {
         error: 'No files provided',
       );
     }
-    
+
     try {
-      onStatusUpdate?.call('Analyzing files for optimal encryption strategy...');
-      
+      onStatusUpdate
+          ?.call('Analyzing files for optimal encryption strategy...');
+
       // Analyze encryption strategy
-      final analysis = EncryptionStrategyService.analyzeEncryptionStrategy(sourceFiles);
-      
+      final analysis =
+          EncryptionStrategyService.analyzeEncryptionStrategy(sourceFiles);
+
       debugPrint('Encryption analysis: ${analysis.reasoning}');
       onStatusUpdate?.call(analysis.reasoning);
-      
+
       // Check storage limits
       await _checkStorageLimits(sourceFiles);
-      
+
       final masterKey32 = await secureStorage.getOrCreateMasterKey32();
-      
+
       switch (analysis.recommendedStrategy) {
         case EncryptionStrategy.container:
           return await _addFilesAsContainer(
@@ -80,7 +84,7 @@ class EnhancedVaultRepository extends VaultRepository {
             onProgress: onProgress,
             onStatusUpdate: onStatusUpdate,
           );
-          
+
         case EncryptionStrategy.individual:
           return await _addFilesIndividually(
             sourceFiles: sourceFiles,
@@ -89,7 +93,7 @@ class EnhancedVaultRepository extends VaultRepository {
             onProgress: onProgress,
             onStatusUpdate: onStatusUpdate,
           );
-          
+
         case EncryptionStrategy.hybrid:
           return await _addFilesHybrid(
             sourceFiles: sourceFiles,
@@ -108,7 +112,7 @@ class EnhancedVaultRepository extends VaultRepository {
       );
     }
   }
-  
+
   /// Adds files as encrypted container (high performance)
   Future<BulkImportResult> _addFilesAsContainer({
     required List<File> sourceFiles,
@@ -120,32 +124,33 @@ class EnhancedVaultRepository extends VaultRepository {
   }) async {
     try {
       onStatusUpdate?.call('Creating encrypted container...');
-      
+
       // Create encrypted container
       final containerResult = await _folderCrypto.createEncryptedContainer(
         sourceFiles: sourceFiles,
         containerName: folderName,
         masterKey32: masterKey32,
-        onProgress: (progress) => onProgress?.call(progress * 0.8), // 80% for container creation
+        onProgress: (progress) =>
+            onProgress?.call(progress * 0.8), // 80% for container creation
       );
-      
+
       if (!containerResult.success) {
         throw Exception(containerResult.error ?? 'Container creation failed');
       }
-      
+
       onStatusUpdate?.call('Saving container metadata...');
-      
+
       // Create folder entry in database
       final folder = VaultFolder()
         ..name = folderName
         ..parentId = parentFolderId
         ..createdAt = DateTime.now()
         ..updatedAt = DateTime.now();
-      
+
       await _isar.writeTxn(() async {
         await _isar.vaultFolders.put(folder);
       });
-      
+
       // Create single vault file entry for the container
       final containerFile = VaultFile()
         ..parentFolderId = folder.id
@@ -155,14 +160,14 @@ class EnhancedVaultRepository extends VaultRepository {
         ..mimeType = 'application/vault-container'
         ..ivBase64 = '' // Container has its own encryption
         ..createdAt = DateTime.now();
-      
+
       await _isar.writeTxn(() async {
         await _isar.vaultFiles.put(containerFile);
       });
-      
+
       onProgress?.call(1.0);
       onStatusUpdate?.call('Container import completed successfully!');
-      
+
       return BulkImportResult(
         success: true,
         filesImported: sourceFiles.length,
@@ -170,7 +175,6 @@ class EnhancedVaultRepository extends VaultRepository {
         strategy: 'Container Encryption',
         performanceGain: '70-85% faster processing',
       );
-      
     } catch (e) {
       debugPrint('Container import failed: $e');
       return BulkImportResult(
@@ -179,7 +183,7 @@ class EnhancedVaultRepository extends VaultRepository {
       );
     }
   }
-  
+
   /// Adds files individually with thermal protection, memory optimization, and battery awareness
   Future<BulkImportResult> _addFilesIndividually({
     required List<File> sourceFiles,
@@ -189,21 +193,22 @@ class EnhancedVaultRepository extends VaultRepository {
     Function(String)? onStatusUpdate,
   }) async {
     try {
-      onStatusUpdate?.call('Encrypting files individually with hardware acceleration and battery optimization...');
-      
+      onStatusUpdate?.call(
+          'Encrypting files individually with hardware acceleration and battery optimization...');
+
       // Use battery-aware processing for optimal performance
       final results = await _battery.processBatteryAware<bool>(
         items: sourceFiles,
         processor: (file) async {
           // Check thermal state and adapt processing
           final thermalConfig = _thermal.getProcessingConfig(baseBatchSize: 5);
-          
+
           if (thermalConfig.shouldPause) {
-            onStatusUpdate?.call('Device overheating - pausing to cool down...');
-            await Future.delayed(Duration(milliseconds: thermalConfig.delayMs));
+            onStatusUpdate
+                ?.call('Device overheating - pausing to cool down...');
             return false; // Skip this file
           }
-          
+
           try {
             // Add individual file using existing method
             await addMedia(
@@ -212,12 +217,7 @@ class EnhancedVaultRepository extends VaultRepository {
               sourcePath: file.path,
               bytes: null,
             );
-            
-            // Thermal-aware delay
-            if (thermalConfig.delayMs > 0) {
-              await Future.delayed(Duration(milliseconds: thermalConfig.delayMs));
-            }
-            
+
             return true;
           } catch (e) {
             debugPrint('Failed to import file ${file.path}: $e');
@@ -227,17 +227,17 @@ class EnhancedVaultRepository extends VaultRepository {
         onProgress: onProgress,
         onStatusUpdate: onStatusUpdate,
       );
-      
+
       final processedFiles = results.where((success) => success).length;
-      
+
       return BulkImportResult(
         success: true,
         filesImported: processedFiles,
         foldersCreated: 0,
         strategy: 'Individual Encryption (Hardware + Battery Optimized)',
-        performanceGain: 'Maximum security with thermal protection, hardware acceleration, and battery awareness',
+        performanceGain:
+            'Maximum security with thermal protection, hardware acceleration, and battery awareness',
       );
-      
     } catch (e) {
       debugPrint('Individual import failed: $e');
       return BulkImportResult(
@@ -246,7 +246,7 @@ class EnhancedVaultRepository extends VaultRepository {
       );
     }
   }
-  
+
   /// Adds files using hybrid approach
   Future<BulkImportResult> _addFilesHybrid({
     required List<File> sourceFiles,
@@ -258,37 +258,40 @@ class EnhancedVaultRepository extends VaultRepository {
   }) async {
     try {
       onStatusUpdate?.call('Using hybrid encryption strategy...');
-      
+
       // Group files by type
       final mediaFiles = <File>[];
       final documentFiles = <File>[];
-      
+
       for (final file in sourceFiles) {
         final ext = file.path.split('.').last.toLowerCase();
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mkv', 'avi', 'mov'].contains(ext)) {
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mkv', 'avi', 'mov']
+            .contains(ext)) {
           mediaFiles.add(file);
         } else {
           documentFiles.add(file);
         }
       }
-      
+
       int totalImported = 0;
       int foldersCreated = 0;
-      
+
       // Import media files as container if enough
       if (mediaFiles.length > 10) {
         final mediaFilesLength = mediaFiles.length;
-        onStatusUpdate?.call('Creating container for $mediaFilesLength media files...');
-        
+        onStatusUpdate
+            ?.call('Creating container for $mediaFilesLength media files...');
+
         final containerResult = await _addFilesAsContainer(
           sourceFiles: mediaFiles,
           parentFolderId: parentFolderId,
           folderName: '${folderName}_Media',
           masterKey32: masterKey32,
-          onProgress: (progress) => onProgress?.call(progress * 0.6), // 60% for media
+          onProgress: (progress) =>
+              onProgress?.call(progress * 0.6), // 60% for media
           onStatusUpdate: onStatusUpdate,
         );
-        
+
         if (containerResult.success) {
           totalImported += containerResult.filesImported ?? 0;
           foldersCreated += containerResult.foldersCreated ?? 0;
@@ -302,32 +305,34 @@ class EnhancedVaultRepository extends VaultRepository {
           onProgress: (progress) => onProgress?.call(progress * 0.6),
           onStatusUpdate: onStatusUpdate,
         );
-        
+
         if (individualResult.success) {
           totalImported += individualResult.filesImported ?? 0;
         }
       }
-      
+
       // Import documents individually for security
       if (documentFiles.isNotEmpty) {
         final documentFilesLength = documentFiles.length;
-        onStatusUpdate?.call('Encrypting $documentFilesLength documents individually...');
-        
+        onStatusUpdate
+            ?.call('Encrypting $documentFilesLength documents individually...');
+
         final docResult = await _addFilesIndividually(
           sourceFiles: documentFiles,
           parentFolderId: parentFolderId,
           masterKey32: masterKey32,
-          onProgress: (progress) => onProgress?.call(0.6 + progress * 0.4), // 40% for docs
+          onProgress: (progress) =>
+              onProgress?.call(0.6 + progress * 0.4), // 40% for docs
           onStatusUpdate: onStatusUpdate,
         );
-        
+
         if (docResult.success) {
           totalImported += docResult.filesImported ?? 0;
         }
       }
-      
+
       onProgress?.call(1.0);
-      
+
       return BulkImportResult(
         success: true,
         filesImported: totalImported,
@@ -335,7 +340,6 @@ class EnhancedVaultRepository extends VaultRepository {
         strategy: 'Hybrid Encryption',
         performanceGain: 'Optimized for mixed content',
       );
-      
     } catch (e) {
       debugPrint('Hybrid import failed: $e');
       return BulkImportResult(
@@ -344,37 +348,39 @@ class EnhancedVaultRepository extends VaultRepository {
       );
     }
   }
-  
+
   /// Checks storage limits before import
   Future<void> _checkStorageLimits(List<File> files) async {
     final settings = await _isar.appSettings.where().anyId().findFirst();
     final maxBytes = settings?.maxStorageBytes;
-    
+
     if (maxBytes != null) {
       int totalNewSize = 0;
       for (final file in files) {
         totalNewSize += await file.length();
       }
-      
+
       final allFiles = await _isar.vaultFiles.where().anyId().findAll();
       int usedSize = 0;
       for (final f in allFiles) {
         usedSize += f.byteSize;
       }
-      
+
       if (usedSize + totalNewSize > maxBytes) {
-        final neededMB = ((totalNewSize + usedSize - maxBytes) / (1024 * 1024)).ceil();
-        throw StateError('Storage limit would be exceeded. Need $neededMB MB more space.');
+        final neededMB =
+            ((totalNewSize + usedSize - maxBytes) / (1024 * 1024)).ceil();
+        throw StateError(
+            'Storage limit would be exceeded. Need $neededMB MB more space.');
       }
     }
   }
-  
+
   @override
   void dispose() {
     _thermal.dispose();
     super.dispose();
   }
-  
+
   /// Get comprehensive performance statistics
   Future<EnhancedPerformanceStats> getPerformanceStats() async {
     try {
@@ -382,7 +388,7 @@ class EnhancedVaultRepository extends VaultRepository {
       final batteryStats = await _battery.getBatteryStats();
       final progressiveStats = _progressive.getCacheStats();
       final hardwareCapabilities = _hardware.capabilities;
-      
+
       return EnhancedPerformanceStats(
         memoryStats: memoryStats,
         batteryStats: batteryStats,
@@ -395,7 +401,7 @@ class EnhancedVaultRepository extends VaultRepository {
       return EnhancedPerformanceStats.empty();
     }
   }
-  
+
   /// Preload images for better UI performance
   Future<void> preloadImagesForFolder(int? folderId) async {
     try {
@@ -405,19 +411,19 @@ class EnhancedVaultRepository extends VaultRepository {
           .filter()
           .mimeTypeStartsWith('image/')
           .findAll();
-      
+
       await _progressive.preloadImages(files);
     } catch (e) {
       debugPrint('Error preloading images: $e');
     }
   }
-  
+
   /// Clear all performance caches
   Future<void> clearPerformanceCaches() async {
     try {
       await _memory.performMemoryCleanup();
       _progressive.clearCaches();
-      
+
       if (kDebugMode) {
         debugPrint('Performance caches cleared');
       }
@@ -435,7 +441,7 @@ class BulkImportResult {
   final String? strategy;
   final String? performanceGain;
   final String? error;
-  
+
   BulkImportResult({
     required this.success,
     this.filesImported,
@@ -453,7 +459,7 @@ class EnhancedPerformanceStats {
   final ProgressiveLoadingStats progressiveStats;
   final HardwareCapabilities? hardwareCapabilities;
   final String thermalState;
-  
+
   EnhancedPerformanceStats({
     required this.memoryStats,
     required this.batteryStats,
@@ -461,7 +467,7 @@ class EnhancedPerformanceStats {
     required this.hardwareCapabilities,
     required this.thermalState,
   });
-  
+
   factory EnhancedPerformanceStats.empty() {
     return EnhancedPerformanceStats(
       memoryStats: MemoryStats(
@@ -488,28 +494,28 @@ class EnhancedPerformanceStats {
       thermalState: 'Normal',
     );
   }
-  
+
   /// Get overall performance score (0-100)
   int get performanceScore {
     int score = 50; // Base score
-    
+
     // Hardware acceleration bonus
     if (hardwareCapabilities?.aesNiSupported == true) score += 20;
     if (hardwareCapabilities?.avx2Supported == true) score += 10;
-    
+
     // Battery penalty
     if (batteryStats.batteryLevel < 30 && !batteryStats.isCharging) score -= 20;
     if (batteryStats.batteryLevel < 15 && !batteryStats.isCharging) score -= 30;
-    
+
     // Memory usage penalty
     if (memoryStats.imageCacheUsagePercent > 80) score -= 15;
-    
+
     // Thermal penalty
     if (thermalState.toLowerCase().contains('hot')) score -= 25;
-    
+
     return score.clamp(0, 100);
   }
-  
+
   /// Get performance summary text
   String get performanceSummary {
     final score = performanceScore;

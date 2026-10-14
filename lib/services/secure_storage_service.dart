@@ -136,6 +136,10 @@ class SecureStorageService {
     return Duration(milliseconds: diff);
   }
 
+  /// Public wrapper so external callers (e.g. [AuthSession]) can record an
+  /// auth attempt without re-running the KDF.
+  Future<void> recordAuthAttempt(bool ok) => _updateLockStateAfterAttempt(ok);
+
   Future<void> _updateLockStateAfterAttempt(bool ok) async {
     if (ok) {
       await _storage.write(key: kFailedAttempts, value: '0');

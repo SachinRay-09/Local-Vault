@@ -92,9 +92,6 @@ class BulkImportService {
           (error) => errors.add(error),
           (bytes) => batchBytesTotal += bytes,
         );
-
-        // Longer delay between batches to prevent CPU overload
-        await Future.delayed(const Duration(milliseconds: 100));
       }
       swBatch.stop();
       if (swBatch.elapsedMilliseconds > 0) {
