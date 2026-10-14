@@ -934,34 +934,45 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // For now, we'll use a simple dialog to get folder path
       final controller = TextEditingController();
+      bool includeVideo = false;
       final folderPath = await showDialog<String>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Import Folder'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                  'Enter the full path to the folder containing images:'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  hintText: r'C:\Users\YourName\Pictures\Manga\Series1',
-                  labelText: 'Folder Path',
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Import Folder'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                    'Enter the full path to the folder containing images:'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    hintText: r'C:\Users\YourName\Pictures\Manga\Series1',
+                    labelText: 'Folder Path',
+                  ),
                 ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Include video files (.mp4, .mkv, .avi)'),
+                  value: includeVideo,
+                  onChanged: (v) =>
+                      setDialogState(() => includeVideo = v ?? false),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, controller.text.trim()),
+                child: const Text('Import'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Import'),
-            ),
-          ],
         ),
       );
 
@@ -985,6 +996,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bulkImport: _bulkImport,
           sourceFolderPath: folderPath,
           destinationFolderId: _currentFolderId,
+          includeVideo: includeVideo,
           onComplete: () {
             debugPrint(
                 'DEBUG: Bulk import completed, closing dialog and refreshing');
@@ -2351,12 +2363,14 @@ class _BulkImportProgressDialog extends StatefulWidget {
     required this.sourceFolderPath,
     required this.destinationFolderId,
     required this.onComplete,
+    this.includeVideo = false,
   });
 
   final bulk.BulkImportService bulkImport;
   final String sourceFolderPath;
   final int? destinationFolderId;
   final VoidCallback onComplete;
+  final bool includeVideo;
 
   @override
   State<_BulkImportProgressDialog> createState() =>
@@ -2365,6 +2379,7 @@ class _BulkImportProgressDialog extends StatefulWidget {
 
 class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
   String _currentProgress = 'Starting import...';
+  double _byteProgress = 0.0;
   bool _isComplete = false;
   bulk.BulkImportResult? _result;
 
@@ -2379,9 +2394,15 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
       final result = await widget.bulkImport.importFolder(
         sourceFolderPath: widget.sourceFolderPath,
         destinationFolderId: widget.destinationFolderId,
+        includeVideo: widget.includeVideo,
         onProgress: (progress) {
           if (mounted) {
             setState(() => _currentProgress = progress);
+          }
+        },
+        onByteProgress: (fraction) {
+          if (mounted) {
+            setState(() => _byteProgress = fraction);
           }
         },
       );
@@ -2391,6 +2412,7 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
           _result = result;
           _isComplete = true;
           _currentProgress = 'Import completed!';
+          _byteProgress = 1.0;
         });
       }
     } catch (e) {
@@ -2413,6 +2435,13 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
           if (!_isComplete) const CircularProgressIndicator(),
           const SizedBox(height: 16),
           Text(_currentProgress),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(value: _byteProgress),
+          const SizedBox(height: 4),
+          Text(
+            '${(_byteProgress * 100).toInt()}%',
+            style: const TextStyle(fontSize: 12),
+          ),
           if (_result != null) ...[
             const SizedBox(height: 16),
             Text('Files imported: ${_result!.filesImported}'),

@@ -39,7 +39,13 @@ class BulkImportService {
     '.webp',
     '.svg',
     '.apng',
-    '.avif'
+    '.avif',
+  ];
+
+  static const List<String> _supportedVideoExtensions = [
+    '.mp4',
+    '.mkv',
+    '.avi',
   ];
 
   /// Import a folder and all its contents into the vault using isolate-based processing
@@ -47,6 +53,8 @@ class BulkImportService {
     required String sourceFolderPath,
     required int? destinationFolderId,
     required Function(String) onProgress,
+    Function(double)? onByteProgress,
+    bool includeVideo = false,
   }) async {
     final sourceDir = Directory(sourceFolderPath);
     if (!await sourceDir.exists()) {
@@ -60,10 +68,18 @@ class BulkImportService {
 
     try {
       // First, count total files for progress tracking
-      final allFiles = await _getAllFiles(sourceDir);
+      final allFiles =
+          await _getAllFiles(sourceDir, includeVideo: includeVideo);
       final totalFiles = allFiles.length;
 
       onProgress('Found $totalFiles files to import...');
+
+      // Compute total byte size for byte-accurate progress
+      int totalBytes = 0;
+      for (final f in allFiles) {
+        totalBytes += await f.file.length();
+      }
+      int bytesProcessed = 0;
 
       // Create the root folder in vault
       final rootFolderName = path.basename(sourceFolderPath);
@@ -91,6 +107,10 @@ class BulkImportService {
           (imported) => filesImported += imported,
           (error) => errors.add(error),
           (bytes) => batchBytesTotal += bytes,
+          onByteProgress: onByteProgress,
+          getBytesProcessed: () => bytesProcessed,
+          addBytesProcessed: (b) => bytesProcessed += b,
+          totalBytes: totalBytes,
         );
       }
       swBatch.stop();
@@ -125,8 +145,12 @@ class BulkImportService {
     Function(int) updateProcessed,
     Function(int) updateImported,
     Function(String) addError,
-    Function(int) addBytes,
-  ) async {
+    Function(int) addBytes, {
+    Function(double)? onByteProgress,
+    int Function()? getBytesProcessed,
+    void Function(int)? addBytesProcessed,
+    int totalBytes = 0,
+  }) async {
     for (final fileInfo in batch) {
       try {
         currentProcessed++;
@@ -153,6 +177,15 @@ class BulkImportService {
         );
         swFile.stop();
         addBytes(fileBytes);
+
+        // Update byte-accurate progress after each successful file
+        if (onByteProgress != null &&
+            addBytesProcessed != null &&
+            getBytesProcessed != null) {
+          addBytesProcessed(fileInfo.file.lengthSync());
+          onByteProgress(
+              totalBytes > 0 ? getBytesProcessed() / totalBytes : 0.0);
+        }
 
         final fileMb = fileBytes / (1024 * 1024);
         final fileMbs = swFile.elapsedMilliseconds > 0
@@ -185,14 +218,19 @@ class BulkImportService {
 
   /// Get all supported files from a directory recursively
   /// Files are sorted naturally (1, 2, 3... 10... 100) to preserve folder structure
-  Future<List<_FileInfo>> _getAllFiles(Directory dir) async {
+  Future<List<_FileInfo>> _getAllFiles(Directory dir,
+      {bool includeVideo = false}) async {
     final List<_FileInfo> files = [];
     final basePath = dir.path;
+    final supported = [
+      ..._supportedImageExtensions,
+      if (includeVideo) ..._supportedVideoExtensions,
+    ];
 
     await for (final entity in dir.list(recursive: true)) {
       if (entity is File) {
         final extension = path.extension(entity.path).toLowerCase();
-        if (_supportedImageExtensions.contains(extension)) {
+        if (supported.contains(extension)) {
           final relativePath = path.relative(entity.path, from: basePath);
           files.add(_FileInfo(file: entity, relativePath: relativePath));
         }
@@ -311,6 +349,16 @@ class BulkImportService {
         return 'image/bmp';
       case '.svg':
         return 'image/svg+xml';
+      case '.avif':
+        return 'image/avif';
+      case '.apng':
+        return 'image/apng';
+      case '.mp4':
+        return 'video/mp4';
+      case '.mkv':
+        return 'video/x-matroska';
+      case '.avi':
+        return 'video/x-msvideo';
       default:
         return null;
     }

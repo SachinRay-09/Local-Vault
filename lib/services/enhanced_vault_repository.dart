@@ -178,6 +178,13 @@ class EnhancedVaultRepository extends VaultRepository {
       onStatusUpdate?.call(
           'Encrypting files individually with hardware acceleration and battery optimization...');
 
+      // Compute total bytes upfront for byte-accurate progress
+      int totalBytes = 0;
+      for (final file in sourceFiles) {
+        totalBytes += await file.length();
+      }
+      int bytesProcessed = 0;
+
       // Use battery-aware processing for optimal performance
       final results = await _battery.processBatteryAware<bool>(
         items: sourceFiles,
@@ -199,6 +206,8 @@ class EnhancedVaultRepository extends VaultRepository {
           }
 
           try {
+            final fileBytes = (await file.length()) as int;
+
             // Add individual file using existing method
             await addMedia(
               originalName: file.path.split(Platform.pathSeparator).last,
@@ -207,13 +216,20 @@ class EnhancedVaultRepository extends VaultRepository {
               bytes: null,
             );
 
+            bytesProcessed += fileBytes;
+            if (onProgress != null) {
+              onProgress(totalBytes > 0
+                  ? bytesProcessed / totalBytes.toDouble()
+                  : 0.0);
+            }
+
             return true;
           } catch (e) {
             debugPrint('Failed to import file ${file.path}: $e');
             return false;
           }
         },
-        onProgress: onProgress,
+        // Do not pass onProgress to processBatteryAware — we emit byte-accurate progress above
         onStatusUpdate: onStatusUpdate,
       );
 
