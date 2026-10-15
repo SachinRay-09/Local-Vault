@@ -190,6 +190,9 @@ static bool gcm_decrypt(AesGcmCtx& ctx,
 }
 
 // ─── v1 Header auth tag: GCM over empty plaintext with AAD=header ─────────────
+// Calls BCrypt directly (same pattern as verify_header_tag) to avoid routing
+// through gcm_encrypt with a tag-sized output buffer that would overflow for
+// any non-zero plainLen.
 static void compute_header_tag(AesGcmCtx& ctx,
                                 const uint8_t* base_nonce,
                                 const uint8_t header[kHeaderRawSize],
@@ -197,10 +200,19 @@ static void compute_header_tag(AesGcmCtx& ctx,
   uint8_t nonce0[12];
   build_chunk_nonce(base_nonce, 0, nonce0);
 
-  uint8_t dummy[kGcmTagSize]; // output buffer (plainLen=0 → no ciphertext written)
-  gcm_encrypt(ctx, nonce0, header, kHeaderRawSize, nullptr, 0, dummy);
-  // gcm_encrypt writes the tag to dummy + 0 (i.e. dummy itself for empty plain)
-  memcpy(out_tag, dummy + 0, kGcmTagSize);
+  BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO ai;
+  BCRYPT_INIT_AUTH_MODE_INFO(ai);
+  ai.pbNonce    = nonce0;
+  ai.cbNonce    = 12;
+  ai.pbTag      = out_tag;           // BCrypt writes the tag directly here
+  ai.cbTag      = static_cast<ULONG>(kGcmTagSize);
+  ai.pbAuthData = const_cast<PUCHAR>(header);
+  ai.cbAuthData = static_cast<ULONG>(kHeaderRawSize);
+
+  // Encrypt empty plaintext: no ciphertext written, tag lands in out_tag.
+  ULONG written = 0;
+  BCryptEncrypt(ctx.hKey, nullptr, 0, &ai,
+                nullptr, 0, nullptr, 0, &written, 0);
 }
 
 // ─── Verify header auth tag ───────────────────────────────────────────────────

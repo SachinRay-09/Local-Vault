@@ -14,7 +14,7 @@ class EncryptResult {
   const EncryptResult({
     required this.ivBase64,
     required this.byteSize,
-    this.formatVersion = 0,
+    this.formatVersion = 1,
   });
 
   /// Base64-encoded IV for v0 blobs. Empty string for v1 (nonce is in the blob header).

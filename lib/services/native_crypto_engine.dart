@@ -76,12 +76,20 @@ class NativeCryptoEngine implements CryptoEngine {
     }
 
     if (Platform.isWindows || Platform.isAndroid) {
-      await _channel.invokeMethod<void>('decryptFile', {
-        'sourcePath': sourcePath,
-        'destPath': destPath,
-        'keyBase64': base64Encode(key),
-        'ivBase64': ivBase64,
-      });
+      try {
+        await _channel.invokeMethod<void>('decryptFile', {
+          'sourcePath': sourcePath,
+          'destPath': destPath,
+          'keyBase64': base64Encode(key),
+          // ivBase64 is intentionally omitted — v1 blobs carry the nonce in
+          // the header; v0 blobs never reach this branch (probed above).
+        });
+      } on PlatformException catch (e) {
+        // Translate native auth-failure errors to FormatException so callers
+        // catch a consistent type regardless of which backend handled the blob.
+        throw FormatException(
+            'Decryption failed (native bridge): ${e.message ?? e.code}');
+      }
       return;
     }
 
