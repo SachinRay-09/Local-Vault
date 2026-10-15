@@ -28,5 +28,9 @@ class OperationJobItem {
 
   late int sourceSizeBytes;
 
+  /// Vault folder id that the imported file should land in.
+  /// Null means the vault root.
+  int? parentFolderId;
+
   String? failureReason;
 }

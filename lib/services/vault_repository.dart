@@ -172,6 +172,45 @@ class VaultRepository {
     });
   }
 
+  /// Registers an already-encrypted blob in the vault database.
+  ///
+  /// Use this when the blob has been written to disk by an external process
+  /// (e.g. [JobRunner]) and you only need to create the [VaultFile] row and
+  /// update the storage counter — without re-encrypting the data.
+  Future<VaultFile> addEncryptedBlobRecord({
+    required String originalName,
+    required int? parentFolderId,
+    required String blobId,
+    required String ivBase64,
+    required int byteSize,
+    String? mimeType,
+  }) async {
+    // Derive the stored blob name: JobRunner writes '<blobId>.bin'.
+    final storedBlobName = '$blobId.bin';
+
+    final maxSortOrder = await _getMaxSortOrder(parentFolderId);
+
+    final file = VaultFile()
+      ..parentFolderId = parentFolderId
+      ..originalName = originalName
+      ..storedBlobName = storedBlobName
+      ..byteSize = byteSize
+      ..mimeType = mimeType
+      ..ivBase64 = ivBase64
+      ..createdAt = DateTime.now()
+      ..sortOrder = maxSortOrder + 1;
+
+    final settings =
+        await _isar.appSettings.where().anyId().findFirst() ?? AppSettings();
+    settings.totalBytesUsed += byteSize;
+
+    await _isar.writeTxn(() async {
+      await _isar.vaultFiles.put(file);
+      await _isar.appSettings.put(settings);
+    });
+    return file;
+  }
+
   Future<void> renameFolder({
     required int folderId,
     required String newName,

@@ -32,23 +32,28 @@ const OperationJobItemSchema = CollectionSchema(
       name: r'jobId',
       type: IsarType.long,
     ),
-    r'partialBlobPath': PropertySchema(
+    r'parentFolderId': PropertySchema(
       id: 3,
+      name: r'parentFolderId',
+      type: IsarType.long,
+    ),
+    r'partialBlobPath': PropertySchema(
+      id: 4,
       name: r'partialBlobPath',
       type: IsarType.string,
     ),
     r'sourcePath': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'sourcePath',
       type: IsarType.string,
     ),
     r'sourceSizeBytes': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'sourceSizeBytes',
       type: IsarType.long,
     ),
     r'state': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'state',
       type: IsarType.byte,
       enumMap: _OperationJobItemstateEnumValueMap,
@@ -114,10 +119,11 @@ void _operationJobItemSerialize(
   writer.writeString(offsets[0], object.blobId);
   writer.writeString(offsets[1], object.failureReason);
   writer.writeLong(offsets[2], object.jobId);
-  writer.writeString(offsets[3], object.partialBlobPath);
-  writer.writeString(offsets[4], object.sourcePath);
-  writer.writeLong(offsets[5], object.sourceSizeBytes);
-  writer.writeByte(offsets[6], object.state.index);
+  writer.writeLong(offsets[3], object.parentFolderId);
+  writer.writeString(offsets[4], object.partialBlobPath);
+  writer.writeString(offsets[5], object.sourcePath);
+  writer.writeLong(offsets[6], object.sourceSizeBytes);
+  writer.writeByte(offsets[7], object.state.index);
 }
 
 OperationJobItem _operationJobItemDeserialize(
@@ -131,11 +137,12 @@ OperationJobItem _operationJobItemDeserialize(
   object.failureReason = reader.readStringOrNull(offsets[1]);
   object.id = id;
   object.jobId = reader.readLong(offsets[2]);
-  object.partialBlobPath = reader.readStringOrNull(offsets[3]);
-  object.sourcePath = reader.readString(offsets[4]);
-  object.sourceSizeBytes = reader.readLong(offsets[5]);
+  object.parentFolderId = reader.readLongOrNull(offsets[3]);
+  object.partialBlobPath = reader.readStringOrNull(offsets[4]);
+  object.sourcePath = reader.readString(offsets[5]);
+  object.sourceSizeBytes = reader.readLong(offsets[6]);
   object.state =
-      _OperationJobItemstateValueEnumMap[reader.readByteOrNull(offsets[6])] ??
+      _OperationJobItemstateValueEnumMap[reader.readByteOrNull(offsets[7])] ??
           JobItemState.pending;
   return object;
 }
@@ -154,12 +161,14 @@ P _operationJobItemDeserializeProp<P>(
     case 2:
       return (reader.readLong(offset)) as P;
     case 3:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 6:
+      return (reader.readLong(offset)) as P;
+    case 7:
       return (_OperationJobItemstateValueEnumMap[
               reader.readByteOrNull(offset)] ??
           JobItemState.pending) as P;
@@ -781,6 +790,80 @@ extension OperationJobItemQueryFilter
   }
 
   QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
+      parentFolderIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'parentFolderId',
+      ));
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
+      parentFolderIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'parentFolderId',
+      ));
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
+      parentFolderIdEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'parentFolderId',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
+      parentFolderIdGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'parentFolderId',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
+      parentFolderIdLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'parentFolderId',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
+      parentFolderIdBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'parentFolderId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterFilterCondition>
       partialBlobPathIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -1233,6 +1316,20 @@ extension OperationJobItemQuerySortBy
   }
 
   QueryBuilder<OperationJobItem, OperationJobItem, QAfterSortBy>
+      sortByParentFolderId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentFolderId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterSortBy>
+      sortByParentFolderIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentFolderId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterSortBy>
       sortByPartialBlobPath() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'partialBlobPath', Sort.asc);
@@ -1345,6 +1442,20 @@ extension OperationJobItemQuerySortThenBy
   }
 
   QueryBuilder<OperationJobItem, OperationJobItem, QAfterSortBy>
+      thenByParentFolderId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentFolderId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterSortBy>
+      thenByParentFolderIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentFolderId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QAfterSortBy>
       thenByPartialBlobPath() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'partialBlobPath', Sort.asc);
@@ -1425,6 +1536,13 @@ extension OperationJobItemQueryWhereDistinct
   }
 
   QueryBuilder<OperationJobItem, OperationJobItem, QDistinct>
+      distinctByParentFolderId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'parentFolderId');
+    });
+  }
+
+  QueryBuilder<OperationJobItem, OperationJobItem, QDistinct>
       distinctByPartialBlobPath({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'partialBlobPath',
@@ -1478,6 +1596,13 @@ extension OperationJobItemQueryProperty
   QueryBuilder<OperationJobItem, int, QQueryOperations> jobIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'jobId');
+    });
+  }
+
+  QueryBuilder<OperationJobItem, int?, QQueryOperations>
+      parentFolderIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'parentFolderId');
     });
   }
 
