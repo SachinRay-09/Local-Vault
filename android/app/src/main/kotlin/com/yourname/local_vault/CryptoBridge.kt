@@ -128,13 +128,30 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
 
     // ─── Header auth tag ──────────────────────────────────────────────────────
     // GCM over empty plaintext with AAD = header bytes → tag only.
+    // Sentinel index 0xFFFFFFFF.toInt() (== -1 in signed Int32, same bit pattern)
+    // ensures the header tag nonce never collides with any data chunk nonce
+    // (chunk 0 uses index 0x00000000). AES-GCM requires strict (key, nonce)
+    // uniqueness across all GCM operations under the same key.
+    //
+    // JCA spec note: Cipher.doFinal() on empty input with GCM ENCRYPT_MODE
+    // returns 0 bytes of ciphertext followed by the appended 16-byte auth tag,
+    // so doFinal() here returns exactly 16 bytes (the tag).
+    // On DECRYPT_MODE, passing the 16-byte tag buffer to doFinal() treats the
+    // last tagLen bytes as the auth tag and the rest (0 bytes) as ciphertext —
+    // this is correct per the JCA/JCE GCM contract and matches the Dart
+    // reference implementation (GCMBlockCipher.process on empty input).
+    //
+    // TODO(android-test-infra): Add an instrumented test that exercises
+    // computeHeaderTag/verifyHeaderTag on a zero-byte payload once the Android
+    // test infrastructure (androidTest/) is configured.
 
     private fun computeHeaderTag(key: ByteArray, baseNonce: ByteArray,
                                   header: ByteArray): ByteArray {
-        val nonce0 = buildChunkNonce(baseNonce, 0)
+        // 0xFFFFFFFF.toInt() == -1 in signed Int32; same 4-byte bit pattern 0xFF 0xFF 0xFF 0xFF.
+        val nonceHdr = buildChunkNonce(baseNonce, 0xFFFFFFFF.toInt())
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"),
-                    GCMParameterSpec(GCM_TAG_BITS, nonce0))
+                    GCMParameterSpec(GCM_TAG_BITS, nonceHdr))
         cipher.updateAAD(header)
         // doFinal on empty input → 16-byte tag only (javax.crypto appends tag)
         return cipher.doFinal()
@@ -204,12 +221,13 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
             val baseNonce    = headerBuf.copyOfRange(40, 52)
 
             // Verify header auth tag
-            val nonce0 = buildChunkNonce(baseNonce, 0)
+            // Sentinel 0xFFFFFFFF.toInt() matches computeHeaderTag — must be identical.
+            val nonceHdr = buildChunkNonce(baseNonce, 0xFFFFFFFF.toInt())
             try {
                 val verCipher = Cipher.getInstance("AES/GCM/NoPadding")
                 verCipher.init(Cipher.DECRYPT_MODE,
                                SecretKeySpec(key, "AES"),
-                               GCMParameterSpec(GCM_TAG_BITS, nonce0))
+                               GCMParameterSpec(GCM_TAG_BITS, nonceHdr))
                 verCipher.updateAAD(headerBuf)
                 // headerTag is the 16-byte tag; empty ciphertext + tag → doFinal
                 verCipher.doFinal(headerTag)

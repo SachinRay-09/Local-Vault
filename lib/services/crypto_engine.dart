@@ -2,10 +2,11 @@ import 'dart:typed_data';
 
 /// Options controlling the on-disk format written by [CryptoEngine.encryptFile].
 class EncryptionOptions {
-  const EncryptionOptions({this.formatVersion = 1});
+  // TODO(Phase 4.4): Change to 1 after hardware cross-platform tests pass on GT Book + Z9x
+  const EncryptionOptions({this.formatVersion = 0});
 
   /// 0 = legacy AES-256-CTR (backward compat — v0 blobs still decrypt via auto-detect)
-  /// 1 = versioned chunked AES-256-GCM (LVCRYPT1 format) — default from Task 4.4
+  /// 1 = versioned chunked AES-256-GCM (LVCRYPT1 format) — enabled after hardware verification
   final int formatVersion;
 }
 
@@ -14,7 +15,7 @@ class EncryptResult {
   const EncryptResult({
     required this.ivBase64,
     required this.byteSize,
-    this.formatVersion = 1,
+    this.formatVersion = 0,
   });
 
   /// Base64-encoded IV for v0 blobs. Empty string for v1 (nonce is in the blob header).
@@ -32,7 +33,8 @@ abstract class CryptoEngine {
   /// Encrypts [sourcePath] → [destPath].
   ///
   /// [key] must be exactly 32 bytes (AES-256).
-  /// [options] selects the on-disk format; default is v1 (AEAD/GCM) from Task 4.4.
+  /// [options] selects the on-disk format; default is v0 (CTR/legacy) until
+  /// hardware cross-platform tests are confirmed (see TODO in EncryptionOptions).
   Future<EncryptResult> encryptFile({
     required String sourcePath,
     required String destPath,

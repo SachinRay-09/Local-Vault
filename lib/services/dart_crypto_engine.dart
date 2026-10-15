@@ -127,13 +127,17 @@ class DartCryptoEngine implements CryptoEngine {
 
   // -------------------------------------------------------------------------
   // Compute 16-byte header auth tag
-  // Uses chunk-0 nonce; AAD = header bytes; empty plaintext → tag only.
+  // Uses sentinel nonce index 0xFFFFFFFF to avoid sharing the nonce with
+  // data chunk 0 (which uses index 0). AES-GCM requires strict (key, nonce)
+  // uniqueness; reusing the chunk-0 nonce for both the header tag and the
+  // first data chunk would break GCM security.
   // -------------------------------------------------------------------------
   static Uint8List _computeHeaderTag(
       Uint8List key, Uint8List baseNonce, Uint8List header60) {
-    final nonce0 = _chunkNonce(baseNonce, 0);
+    // 0xFFFFFFFF sentinel — never collides with any valid data chunk index.
+    final nonceHdr = _chunkNonce(baseNonce, 0xFFFFFFFF);
     // Encrypt empty plaintext with AAD=header → result is just the 16-byte tag
-    final tagBytes = _gcmEncrypt(key, nonce0, header60, Uint8List(0));
+    final tagBytes = _gcmEncrypt(key, nonceHdr, header60, Uint8List(0));
     return tagBytes; // GCMBlockCipher.process on empty input = 16-byte tag
   }
 
@@ -224,9 +228,10 @@ class DartCryptoEngine implements CryptoEngine {
       final baseNonce = Uint8List.fromList(header60.sublist(40, 52));
 
       // Verify header auth tag: GCM-decrypt empty ciphertext with AAD=header
-      final nonce0 = _chunkNonce(baseNonce, 0);
+      // Sentinel index 0xFFFFFFFF matches the nonce used during encryption.
+      final nonceHdr = _chunkNonce(baseNonce, 0xFFFFFFFF);
       // headerTag from file is the 16-byte tag; combine empty ciphertext + tag
-      _gcmDecrypt(key, nonce0, header60, headerTag,
+      _gcmDecrypt(key, nonceHdr, header60, headerTag,
           errorContext: 'Header auth tag mismatch');
 
       // Decrypt data chunks

@@ -193,16 +193,18 @@ static bool gcm_decrypt(AesGcmCtx& ctx,
 // Calls BCrypt directly (same pattern as verify_header_tag) to avoid routing
 // through gcm_encrypt with a tag-sized output buffer that would overflow for
 // any non-zero plainLen.
+// Sentinel index 0xFFFFFFFF ensures the header tag nonce never collides with
+// any data chunk nonce (chunk 0 uses index 0x00000000).
 static void compute_header_tag(AesGcmCtx& ctx,
                                 const uint8_t* base_nonce,
                                 const uint8_t header[kHeaderRawSize],
                                 uint8_t out_tag[kGcmTagSize]) {
-  uint8_t nonce0[12];
-  build_chunk_nonce(base_nonce, 0, nonce0);
+  uint8_t nonceHdr[12];
+  build_chunk_nonce(base_nonce, 0xFFFFFFFFu, nonceHdr);
 
   BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO ai;
   BCRYPT_INIT_AUTH_MODE_INFO(ai);
-  ai.pbNonce    = nonce0;
+  ai.pbNonce    = nonceHdr;
   ai.cbNonce    = 12;
   ai.pbTag      = out_tag;           // BCrypt writes the tag directly here
   ai.cbTag      = static_cast<ULONG>(kGcmTagSize);
@@ -220,12 +222,13 @@ static bool verify_header_tag(AesGcmCtx& ctx,
                                const uint8_t* base_nonce,
                                const uint8_t header[kHeaderRawSize],
                                const uint8_t tag[kGcmTagSize]) {
-  uint8_t nonce0[12];
-  build_chunk_nonce(base_nonce, 0, nonce0);
+  uint8_t nonceHdr[12];
+  // Sentinel 0xFFFFFFFF matches compute_header_tag — must be identical.
+  build_chunk_nonce(base_nonce, 0xFFFFFFFFu, nonceHdr);
 
   BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO ai;
   BCRYPT_INIT_AUTH_MODE_INFO(ai);
-  ai.pbNonce    = nonce0;
+  ai.pbNonce    = nonceHdr;
   ai.cbNonce    = 12;
   ai.pbTag      = const_cast<PUCHAR>(tag);
   ai.cbTag      = static_cast<ULONG>(kGcmTagSize);
