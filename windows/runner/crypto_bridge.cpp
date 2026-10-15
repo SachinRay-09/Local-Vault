@@ -161,19 +161,23 @@ static void gcm_encrypt(AesGcmCtx& ctx,
 
 // ─── GCM decrypt one block ────────────────────────────────────────────────────
 // Returns false on tag mismatch.
+// [cipherAndTag] must point to a buffer of at least cipherLen + kGcmTagSize bytes.
+// [cipherLen] is the number of ciphertext bytes (NOT including the tag).
+// The tag occupies cipherAndTag[cipherLen .. cipherLen+kGcmTagSize-1].
 static bool gcm_decrypt(AesGcmCtx& ctx,
                          const uint8_t nonce[12],
                          const uint8_t* aad, size_t aadLen,
                          const uint8_t* cipherAndTag, size_t cipherLen,
                          uint8_t* out) {
-  // The last kGcmTagSize bytes of cipherAndTag ARE the tag.
-  const uint8_t* tag = cipherAndTag + cipherLen;
+  // Named pointer to make the offset arithmetic explicit and auditable.
+  // Callers must ensure the backing buffer is at least cipherLen+kGcmTagSize bytes.
+  const uint8_t* const tagPtr = cipherAndTag + cipherLen;
 
   BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO ai;
   BCRYPT_INIT_AUTH_MODE_INFO(ai);
   ai.pbNonce    = const_cast<PUCHAR>(nonce);
   ai.cbNonce    = 12;
-  ai.pbTag      = const_cast<PUCHAR>(tag);
+  ai.pbTag      = const_cast<PUCHAR>(tagPtr);
   ai.cbTag      = static_cast<ULONG>(kGcmTagSize);
   ai.pbAuthData = (aadLen > 0) ? const_cast<PUCHAR>(aad) : nullptr;
   ai.cbAuthData = static_cast<ULONG>(aadLen);

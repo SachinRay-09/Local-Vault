@@ -4,6 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_vault/services/dart_crypto_engine.dart';
 import 'package:local_vault/services/crypto_engine.dart';
 
+// TODO(phase4): Add a cross-platform round-trip integration test that encrypts
+// with DartCryptoEngine and decrypts with NativeCryptoEngine (and vice versa).
+// This verifies the LVCRYPT1 wire format is byte-identical across backends.
+// Tracked as finding #5 in phase4-review.md.
+
 void main() {
   final engine = DartCryptoEngine();
   // Fixed test key: 32 bytes of 0xAB
@@ -123,8 +128,8 @@ void main() {
     encBytes[76] ^= 0xFF;
     File(enc).writeAsBytesSync(encBytes);
 
-    expect(
-      () async => engine.decryptFile(
+    await expectLater(
+      engine.decryptFile(
           sourcePath: enc, destPath: dec, key: key, ivBase64: ''),
       throwsA(isA<FormatException>()),
     );
@@ -145,8 +150,8 @@ void main() {
     final encBytes = File(enc).readAsBytesSync();
     File(enc).writeAsBytesSync(encBytes.sublist(0, 77));
 
-    expect(
-      () async => engine.decryptFile(
+    await expectLater(
+      engine.decryptFile(
           sourcePath: enc, destPath: dec, key: key, ivBase64: ''),
       throwsA(anything),
     );
@@ -163,8 +168,8 @@ void main() {
         sourcePath: src.path, destPath: enc, key: key, options: opts);
 
     final wrongKey = Uint8List(32)..fillRange(0, 32, 0xFF);
-    expect(
-      () async => engine.decryptFile(
+    await expectLater(
+      engine.decryptFile(
           sourcePath: enc, destPath: dec, key: wrongKey, ivBase64: ''),
       throwsA(isA<FormatException>()),
     );
@@ -204,8 +209,8 @@ void main() {
     encBytes[60] ^= 0xFF;
     File(enc).writeAsBytesSync(encBytes);
 
-    expect(
-      () async => engine.decryptFile(
+    await expectLater(
+      engine.decryptFile(
           sourcePath: enc, destPath: dec, key: key, ivBase64: ''),
       throwsA(isA<FormatException>()),
     );

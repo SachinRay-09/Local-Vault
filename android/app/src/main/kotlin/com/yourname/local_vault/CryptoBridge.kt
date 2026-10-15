@@ -9,6 +9,8 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.SecureRandom
@@ -41,6 +43,19 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
     private val channel     = MethodChannel(messenger, CHANNEL_NAME)
     private val executor    = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // ─── I/O helper ───────────────────────────────────────────────────────────
+    // InputStream.read(ByteArray) is not guaranteed to fill the buffer.
+    // This helper retries until exactly [len] bytes are read or EOF/error occurs.
+    private fun readFully(stream: InputStream, buf: ByteArray, len: Int): Int {
+        var offset = 0
+        while (offset < len) {
+            val n = stream.read(buf, offset, len - offset)
+            if (n == -1) break
+            offset += n
+        }
+        return offset
+    }
 
     init {
         channel.setMethodCallHandler { call, result -> handleCall(call, result) }
@@ -145,8 +160,8 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
                 var chunkIdx = 0
 
                 while (true) {
-                    val bytesRead = fis.read(plainBuf)
-                    if (bytesRead == -1) break
+                    val bytesRead = readFully(fis, plainBuf, CHUNK_SIZE)
+                    if (bytesRead == 0) break
 
                     val nonce  = buildChunkNonce(baseNonce, chunkIdx)
                     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -169,7 +184,7 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
         FileInputStream(srcPath).use { fis ->
             // Read 60-byte header
             val headerBuf = ByteArray(HEADER_RAW_BYTES)
-            val hRead = fis.read(headerBuf)
+            val hRead = readFully(fis, headerBuf, HEADER_RAW_BYTES)
             require(hRead == HEADER_RAW_BYTES) { "Truncated header (got $hRead bytes)" }
 
             // Validate magic
@@ -178,7 +193,7 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
 
             // Read 16-byte header auth tag
             val headerTag = ByteArray(GCM_TAG_BYTES)
-            val tRead = fis.read(headerTag)
+            val tRead = readFully(fis, headerTag, GCM_TAG_BYTES)
             require(tRead == GCM_TAG_BYTES) { "Truncated header auth tag" }
 
             // Parse header fields
@@ -209,7 +224,7 @@ class CryptoBridge(private val messenger: BinaryMessenger) {
                 var totalDecrypted = 0L
 
                 while (true) {
-                    val bytesRead = fis.read(inBuf)
+                    val bytesRead = readFully(fis, inBuf, chunkSize + GCM_TAG_BYTES)
                     if (bytesRead <= 0) break
 
                     require(bytesRead > GCM_TAG_BYTES) {

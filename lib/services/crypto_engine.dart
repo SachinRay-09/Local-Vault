@@ -32,7 +32,7 @@ abstract class CryptoEngine {
   /// Encrypts [sourcePath] → [destPath].
   ///
   /// [key] must be exactly 32 bytes (AES-256).
-  /// [options] selects the on-disk format; default is v0 (CTR) until Task 4.4.
+  /// [options] selects the on-disk format; default is v1 (AEAD/GCM) from Task 4.4.
   Future<EncryptResult> encryptFile({
     required String sourcePath,
     required String destPath,
