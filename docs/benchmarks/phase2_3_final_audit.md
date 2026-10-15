@@ -1,198 +1,160 @@
-# Phase 2 + 3 Final Audit Report
+# Phase 2+3 Final Audit — Local Vault
 
-**Date:** 2026-10  
-**Auditor:** Coding sub-agent — Phase 2+3 audit pass  
+**Audit completed:** 2026-10  
 **Build:** v2.5.2+6  
-**Audit input:** `.agents/tasks/audit_plan.md`
+**Result:** ✅ All actionable issues resolved. Both Windows and Android release builds pass.
 
 ---
 
-## Summary
+## 1. Issues Found and Fixed
 
-5 actionable issues from the audit plan were fixed. All 15 flows confirmed in the audit plan were
-re-verified. Both Windows and Android builds pass clean after the fixes.
+### ISSUE-001 — AuthSession.dek stores wrong key ✅ Fixed (prior pass)
 
----
+`AuthSession.unlock()` now loads the actual master key via `CredentialRepository.loadMasterKey()`
+after verifying the password hash, storing the master key in the session — not the ephemeral
+PBKDF2-derived bytes. This pre-empts a Phase 5 regression where DEK-wrapping would wrap the wrong
+bytes.
 
-## Issues Fixed
-
-### ISSUE-001 — AuthSession.dek stores wrong key ✅ FIXED
-
-**File:** `lib/app/auth_session.dart`
-
-**Root cause:** `AuthSession.unlock()` was storing the PBKDF2-derived key (used only for password
-verification) as `session.dek` instead of the actual random master key from secure storage.
-
-**Fix:** After a successful password verify, load the master key via
-`CredentialRepository.loadMasterKey()` and store that in the session. The PBKDF2 key is no
-longer retained after the hash comparison.
-
-**Impact:** Zero behaviour change in Phase 2/3 (no code path reads `authSession.dek`). This
-pre-empts a Phase 5 regression where DEK wrapping would have used the wrong bytes.
+**Files changed:** `lib/app/auth_session.dart`
 
 ---
 
-### ISSUE-002 — Crash recovery never finds partial blobs ✅ FIXED
+### ISSUE-002 — Crash recovery: partial blobs never cleaned (ZIP path) ✅ Fixed (this pass)
 
-**Files:**
-- `lib/services/job_repository.dart`
-- `lib/app/job_runner.dart`
-- `lib/app/app.dart`
+**Root cause (ZIP-001):** `ImportCoordinator.importZip` called `blobStore.createPartialPath(blobId)`
+but never persisted the path back to the item record. `partialBlobPath` stayed `null` for every
+ZIP import item. After a crash, `app._checkInterruptedJobs` found the items but the
+`if (partial != null)` guard short-circuited — no partial blobs were ever cleaned up.
 
-**Root cause (Bug 2a):** `OperationJobItem.partialBlobPath` was never written by `JobRunner` —
-it stayed `null` so the crash-recovery check `if (partial != null)` always skipped every item.
+**Fix:** Added `await jobRepo.saveItemPartialPath(item.id, partialPath)` immediately after the
+`createPartialPath` call in `importZip`'s per-entry try block — mirroring the existing behaviour
+in `JobRunner.run()`.
 
-**Root cause (Bug 2b):** `app.dart._checkInterruptedJobs` called `findPendingItems` which only
-queries state = `pending`, missing any items that had already been marked `running`.
+**Root cause (ZIP-002):** ZIP items were (and remain) created with `state = JobItemState.running`
+since `importZip` owns its own inline encrypt-commit loop and intentionally bypasses `JobRunner`.
+Added an explicit code comment documenting this design: `JobRunner.findPendingItems` only
+processes `pending` items; ZIP items are never eligible for `JobRunner` processing. The crash-
+recovery path in `app.dart` uses `findPendingOrRunningItems` so these items are still swept.
 
-**Fixes:**
-1. Added `JobRepository.saveItemPartialPath(int id, String path)` — persists the partial path in
-   the Isar row.
-2. Added `JobRepository.findPendingOrRunningItems(int jobId)` — returns items with state `pending`
-   OR `running`.
-3. `JobRunner.run()` now calls `jobRepo.saveItemPartialPath(item.id, partialPath)` immediately
-   after `blobStore.createPartialPath()` so the path is persisted before encryption starts.
-4. `app.dart._checkInterruptedJobs` now calls `findPendingOrRunningItems` instead of
-   `findPendingItems`.
-
-**Impact:** Crash recovery now correctly identifies partial blobs and shows the real count in the
-dialog. Clean-up deletes all partial blobs on disk.
+**Files changed:** `lib/app/import_coordinator.dart`  
+**Previously fixed (prior pass):** `lib/services/job_repository.dart` (added `findPendingOrRunningItems`,
+`saveItemPartialPath`), `lib/app/job_runner.dart` (calls `saveItemPartialPath`), `lib/app/app.dart`
+(uses `findPendingOrRunningItems`).
 
 ---
 
-### ISSUE-003 — Desktop ZIP import uses legacy readAsBytes path ✅ FIXED
+### ISSUE-003 — Desktop ZIP import used legacy readAsBytes path ✅ Fixed (prior pass)
 
-**File:** `lib/ui/home/home_screen.dart`
+`home_screen._importZip()` now shows `_ZipImportProgressDialog` which drives
+`_importCoordinator.importZip` (the streaming path). The legacy
+`ImportExportService.importFromZip` call is gone from this code path.
 
-**Root cause:** `_importZip()` on desktop called `_importExport.importFromZip` (loads the whole
-ZIP into RAM via `readAsBytes`). `ImportCoordinator.importZip` (streaming) was wired on mobile
-only.
-
-**Fix:** Replaced `_importZip()` body to show a new `_ZipImportProgressDialog` that drives
-`_importCoordinator.importZip`. The user-visible flow is identical (same password prompt, same
-recommendation dialog). The legacy `importFromZip` call is removed.
-
-**Impact:** Large ZIPs on Windows no longer risk OOM. Storage counter (`totalBytesUsed`) is now
-always updated correctly because all imports go through
-`VaultRepository.addEncryptedBlobRecord`.
+**Files changed:** `lib/ui/home/home_screen.dart`
 
 ---
 
-### ISSUE-007 — ArchiveReader false-positive path check and missing symlink guard ✅ FIXED
+### ISSUE-007 — ArchiveReader false-positive path check and missing symlink guard ✅ Fixed (prior pass)
 
-**File:** `lib/services/archive_reader.dart`
+`_isUnsafePath` now requires a 3-character Windows drive-letter prefix (`C:\`) before flagging an
+absolute path, eliminating the false positive on filenames like `2:30pm.jpg`. Symlink detection
+(`mode & 0xF000 == 0xA000`) is present in both the streaming and in-memory entry loops.
 
-**Root cause (false-positive):** `_isUnsafePath` flagged any name where `name[1] == ':'` — this
-incorrectly rejected valid filenames like `2:30pm.jpg`.
-
-**Root cause (symlink):** Symbolic-link entries were not detected; a ZIP with a symlink pointing
-to a relative path (no `..`) would pass the safety check.
-
-**Fixes:**
-1. Changed the Windows path check to require `name[1] == ':' && (name[2] == '\\' || name[2] == '/')` —
-   properly matches drive-letter paths like `C:\` while leaving filenames like `2:30pm.jpg` alone.
-2. Added symlink detection in both `_entriesFromStream` and `_entriesFromBytes` loops using Unix
-   mode bit `0xA000` (symlink type in archive 3.x). Symlink entries yield `ArchiveEntrySkipped`
-   with reason `'symbolic link'`.
-
-**Impact:** Previously-rejected filenames like `2:30pm.jpg` are now accepted. ZIP symlink entries
-are silently skipped rather than extracted.
+**Files changed:** `lib/services/archive_reader.dart`
 
 ---
 
-### ISSUE-011 — Mobile folder import bypasses ImportCoordinator ✅ FIXED
+### ISSUE-011 — Mobile folder import bypassed ImportCoordinator ✅ Fixed (prior pass)
 
-**Files:**
-- `lib/app/import_coordinator.dart` — new `importFileList()` method added
-- `lib/ui/mobile/mobile_home_screen.dart` — new `_MobileFolderImportDialog`; `_importFolder()`
-  wired to it
+Mobile `_importFolder()` now collects file paths via the picker and passes them to
+`_MobileFolderImportDialog`, which calls `_importCoordinator.importFileList`. That method creates
+an `OperationJob` with `pending` items and delegates to `JobRunner`. Crash recovery now applies to
+mobile folder imports.
 
-**Root cause:** Mobile `_importFolder()` used `_EnhancedFolderImportDialog` which called
-`EnhancedVaultRepository.addMultipleMedia` — the legacy path with fake thermal service. No
-`OperationJob` record was created and crash recovery did not apply.
-
-**Fix:** Added `ImportCoordinator.importFileList(List<String> filePaths, ...)` that:
-- Creates an `OperationJob` and one `OperationJobItem` per file
-- Delegates to `JobRunner` for encryption (same path as folder/ZIP imports)
-- Creates a single root vault folder named from the first file's parent directory
-
-`_importFolder()` now collects file paths from the picker and shows `_MobileFolderImportDialog`
-which drives `_importCoordinator.importFileList`. The user-visible flow is identical (same
-instruction dialog, same multi-file picker).
-
-**Impact:** Mobile folder imports now go through the job engine. Crash recovery applies. The
-`totalBytesUsed` counter is always updated. The fake thermal skip path is no longer used for
-this flow.
+**Files changed:** `lib/ui/mobile/mobile_home_screen.dart`, `lib/app/import_coordinator.dart`
+(added `importFileList` method).
 
 ---
 
-## Issues Confirmed Working (No Change Needed)
+### ZIP-003 — `_ZipImportProgressDialog.password` silently defaulted to empty ✅ Fixed (this pass)
+
+Changed `this.password = ''` to `required this.password` in the desktop
+`_ZipImportProgressDialog` constructor. The call site in `_importZip()` already passes
+`password: pw` explicitly, so behaviour is unchanged. Future call sites now get a compile-time
+error rather than silently opening a password-protected ZIP with an empty key.
+
+**Files changed:** `lib/ui/home/home_screen.dart`
+
+---
+
+## 2. Issues Confirmed Working (No Action Required)
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| ISSUE-004 — DartCryptoEngine isolate safety | ✅ No issue | No instance state captured in closures |
-| ISSUE-005 — BlobStore path consistency | ✅ No issue | All services use VaultPaths.ensureVaultBlobsDir |
-| ISSUE-006 — JobRunner thermal guard | ✅ No issue | Platform.isAndroid guard present; null-safe on Windows |
-| ISSUE-008 — addEncryptedBlobRecord exists | ✅ No issue | Method in VaultRepository, updates counter |
-| ISSUE-009 — deleteFile/deleteFolderRecursive counter | ✅ No issue | Both decrement with clamp |
-| ISSUE-010 — Isar schema version | ✅ No issue | OperationJob + OperationJobItem in schema list |
-| ISSUE-012 — ExportCoordinator Windows guard | ✅ No issue | Only loaded on Windows via auth routing |
-| ISSUE-013 — Auth flow end-to-end | ✅ No issue | Login, setup, routing all correct |
-| ISSUE-014 — ArchiveReader streaming | ✅ No issue | InputFileStream + entry.writeContent path |
-| ISSUE-015 — Storage counter reconcile | ✅ No issue | _reconcileStorageCounter on cold start |
-| ISSUE-001 (schema) — Isar schema registration | ✅ No issue | Both generated schemas in Isar.open() |
+| ISSUE-004 — DartCryptoEngine isolate safety | ✅ | Pure path-to-path ops, no captured state |
+| ISSUE-005 — BlobStore path consistency | ✅ | All paths via `VaultPaths.ensureVaultBlobsDir()` |
+| ISSUE-006 — JobRunner thermal guard | ✅ | `Platform.isAndroid` guard prevents NPE on Windows |
+| ISSUE-008 — `addEncryptedBlobRecord` exists | ✅ | Updates `totalBytesUsed` in same transaction |
+| ISSUE-009 — `deleteFile`/`deleteFolderRecursive` counters | ✅ | Clamp prevents underflow |
+| ISSUE-010 — Isar schema version on cold start | ✅ | Additive schema changes; storage counter reconciled |
+| ISSUE-012 — ExportCoordinator Windows-only guard | ✅ | `home_screen.dart` only loaded on Windows |
+| ISSUE-013 — Auth flow end-to-end | ✅ | KDF runs off UI thread; setup order correct |
+| ISSUE-014 — ArchiveReader streaming (unprotected ZIP) | ✅ | `InputFileStream` + `entry.clear()` |
+| ISSUE-015 — Storage counter reconcile on startup | ✅ | `_reconcileStorageCounter` on first open |
 
 ---
 
-## Flows Verified After Fixes
+## 3. Flows Verified Working
 
-| Flow | Status | Notes |
-|------|--------|-------|
-| Cold start → Isar.open → schema list | ✅ | OperationJob + OperationJobItem registered |
-| Cold start → crash recovery | ✅ FIXED | Now finds running items with partial blobs |
-| Login: AuthSession.unlock → master key in dek | ✅ FIXED | Master key stored, not PBKDF2 key |
-| Login: KDF in background isolate | ✅ | Unchanged |
-| First setup | ✅ | Master key created before hash |
-| Auth gate routing | ✅ | Android→Mobile, Windows→Desktop |
-| Desktop folder import via ImportCoordinator | ✅ | Unchanged |
-| Desktop ZIP import via ImportCoordinator | ✅ FIXED | Streaming path, no OOM risk |
-| Mobile ZIP import via ImportCoordinator | ✅ | Unchanged |
-| Mobile folder import via ImportCoordinator | ✅ FIXED | Now uses importFileList + JobRunner |
-| JobRunner partial path persisted | ✅ FIXED | saveItemPartialPath called before encrypt |
-| JobRunner thermal guard (non-Android) | ✅ | Unchanged |
-| Export: ExportCoordinator.exportFolder | ✅ | Unchanged |
-| File view/decrypt | ✅ | Unchanged |
-| deleteFile / deleteFolderRecursive counter | ✅ | Unchanged |
-| BlobStore path consistency | ✅ | Unchanged |
-| ArchiveReader streaming (unprotected ZIP) | ✅ | Unchanged |
-| ArchiveReader zip-slip protection | ✅ FIXED | Symlinks excluded; false-positive removed |
-| AndroidThermalMonitor on Windows | ✅ | Unchanged |
-
----
-
-## Build Verification
-
-| Build | Result |
-|-------|--------|
-| `flutter analyze` | ✅ 0 issues |
-| `flutter build windows --release` | ✅ `local_vault.exe` built |
-| `flutter build apk --release` | ✅ `app-release.apk` (55.6 MB) |
-
-No `build_runner` run was needed — no Isar model fields were changed.
+| Flow | Status |
+|------|--------|
+| Cold start → Isar.open → schema list (incl. OperationJob/OperationJobItem) | ✅ |
+| Cold start → crash recovery (folder/file-list imports) | ✅ |
+| Cold start → crash recovery (ZIP imports, partial blob cleanup) | ✅ Fixed |
+| Login: AuthSession.unlock → KDF isolate → master key in session | ✅ |
+| First setup: master key created before password hash | ✅ |
+| Auth gate routing (Android→Mobile, Windows→Desktop) | ✅ |
+| Desktop folder import via ImportCoordinator → JobRunner | ✅ |
+| Desktop ZIP import via ImportCoordinator (streaming) | ✅ Fixed (ISSUE-003) |
+| Mobile ZIP import via ImportCoordinator | ✅ |
+| Mobile folder import via ImportCoordinator → JobRunner | ✅ Fixed (ISSUE-011) |
+| JobRunner thermal guard on Windows (no NPE) | ✅ |
+| Export: ExportCoordinator.exportFolder (Windows) | ✅ |
+| File view/decrypt: VaultOpenService.decryptToCachedTempFile | ✅ |
+| deleteFile / deleteFolderRecursive counter decrements | ✅ |
+| BlobStore partial → commit path consistency | ✅ |
+| ArchiveReader streaming (unprotected ZIP) | ✅ |
+| ArchiveReader zip-slip + symlink protection | ✅ Fixed (ISSUE-007) |
+| AndroidThermalMonitor on Windows (no platform channel) | ✅ |
 
 ---
 
-## Issues NOT Fixed
+## 4. Build Verification
 
-None — all actionable Phase 2/3 issues have been addressed.
+| Step | Result |
+|------|--------|
+| `flutter analyze` | ✅ No issues found |
+| `flutter build windows --release` | ✅ `local_vault.exe` built successfully |
+| `flutter build apk --release` | ✅ `app-release.apk` (55.6 MB) built successfully |
 
-### Phase 5 pre-requisite items (out of scope for this audit)
+No `dart run build_runner build` run was needed — no model/schema fields were changed in this pass.
 
-The following are tracked in the audit plan (Section 5) but are Phase 4/5 work, not Phase 2/3
-bugs:
+---
 
-- `CredentialRepository.storeEnvelope / loadEnvelope / hasEnvelope` — Phase 5 Task 5.1
-- `DartCryptoEngine.deriveKek / wrapDek / unwrapDek` — Phase 5 Task 5.2
-- `VaultFile.formatVersion` field — Phase 4 Task 4.1
-- `NativeCryptoEngine` (Windows + Android) — Phase 4 Tasks 4.2/4.3
-- `FileTagSchema / FileTagAssignmentSchema` not in Isar.open — Phase 5/6 (not a current crash)
+## 5. Issues NOT Fixed (with Justification)
+
+### ISSUE-001 Phase 5 prerequisite methods (`storeEnvelope`, `loadEnvelope`, `wrapDek`, etc.)
+
+These methods (`CredentialRepository.storeEnvelope`, `DartCryptoEngine.wrapDek`, `VaultFile.formatVersion`)
+are Phase 5 scope. Adding them now would be out-of-scope feature work and would require Isar schema
+migrations. They are documented in audit_plan.md §5 as Phase 5 dependencies.
+
+### FileTagSchema / FileTagAssignmentSchema not registered
+
+The `FileTag` and `FileTagAssignment` models have `@collection` annotations but are not in
+`Isar.open()`. This is not a crash risk today — no code queries `isar.fileTags`. Adding the
+schemas requires a schema migration run. This is Phase 5/6 tag search scope.
+
+### Concurrency policy (2 workers on Windows)
+
+Design §2.2 specifies 2 concurrent workers on Windows. `JobRunner` currently runs sequentially
+(1 worker). This is a performance gap, not a crash, and was deliberately deferred per audit_plan.md §6.

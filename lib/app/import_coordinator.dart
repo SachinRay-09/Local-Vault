@@ -256,6 +256,12 @@ class ImportCoordinator {
         // ------------------------------------------------------------ //
         // 3. Create job item record
         // ------------------------------------------------------------ //
+        // NOTE: importZip runs its own inline encrypt-commit loop and does NOT
+        // delegate to JobRunner. Items are therefore created directly in the
+        // 'running' state. This is intentional: JobRunner.findPendingItems
+        // only processes 'pending' items, and these items should never be
+        // re-processed by JobRunner. The crash-recovery path in app.dart uses
+        // findPendingOrRunningItems so these items ARE swept by recovery.
         final blobId = _randomBlobId();
         final item = OperationJobItem()
           ..jobId = job.id
@@ -272,6 +278,9 @@ class ImportCoordinator {
         // ------------------------------------------------------------ //
         try {
           final partialPath = await blobStore.createPartialPath(blobId);
+          // Persist partialPath so crash-recovery can clean up the partial
+          // blob if the app is killed before commitPartial is called (ZIP-001).
+          await jobRepo.saveItemPartialPath(item.id, partialPath);
 
           final encryptResult = await crypto.encryptFile(
             sourcePath: e.tempPath,

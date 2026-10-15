@@ -3081,7 +3081,6 @@ class _ExportFolderZipProgressDialogState
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // ZIP import via ImportCoordinator progress dialog (ISSUE-003 fix)
 // Replaces the legacy importFromZip (readAsBytes) path on desktop.
@@ -3094,7 +3093,7 @@ class _ZipImportProgressDialog extends StatefulWidget {
     required this.destinationFolderId,
     required this.onComplete,
     required this.onError,
-    this.password = '',
+    required this.password,
   });
 
   final ImportCoordinator importCoordinator;
