@@ -6,17 +6,20 @@ import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'dart:math';
 
+import '../../app/import_coordinator.dart';
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/android_manga_service.dart';
 import '../../services/app_lifecycle_service.dart';
+import '../../services/blob_store.dart';
+import '../../services/dart_crypto_engine.dart';
 import '../../services/enhanced_vault_repository.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
+import '../../services/job_repository.dart';
 import '../../services/saf_zip_import_service.dart';
 import '../../services/secure_storage_service.dart';
 import '../../services/settings_service.dart';
-import '../../services/unified_import_service.dart';
 import '../../services/vault_open_service.dart';
 import '../../services/vault_repository.dart';
 import '../../utils/vault_format.dart';
@@ -48,10 +51,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   late final SettingsService _settingsService = SettingsService();
 
-  // Use Unified Import Service with smart encryption strategy
-  // ignore: deprecated_member_use_from_same_package
-  late final UnifiedImportService _unifiedImport = UnifiedImportService(
-    enhancedRepo: _repo,
+  // ImportCoordinator wires all new imports through JobRunner (FEAT-003).
+  late final ImportCoordinator _importCoordinator = ImportCoordinator(
+    repo: _repo,
+    jobRepo: JobRepository(),
+    blobStore: BlobStore(),
+    crypto: DartCryptoEngine(),
+    storage: SecureStorageService.instance,
   );
 
   late final AndroidMangaService _androidManga = AndroidMangaService(
@@ -976,21 +982,20 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         try {
           // Try SAF approach first (Android 15+ compatible)
           if (Platform.isAndroid && pickedFile.path != null) {
-            // Convert file path to content URI for SAF
-            final fileUri = Uri.file(pickedFile.path!);
+            final zipFilePath = pickedFile.path!;
 
             if (!mounted) return;
             messenger.hideCurrentSnackBar();
 
-            // Show progress dialog
+            // Show ImportCoordinator progress dialog (FEAT-003).
             showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (context) => _ZipImportProgressDialog(
-                zipUri: fileUri,
+              builder: (context) => _MobileZipImportDialog(
+                importCoordinator: _importCoordinator,
+                zipPath: zipFilePath,
                 password: password.trim(),
                 destinationFolderId: _currentFolderId,
-                repo: _repo,
                 onComplete: () {
                   Navigator.pop(context);
                   _refresh();
@@ -1057,34 +1062,42 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             }
           }
 
-          // Import using new Unified Import Service with smart encryption strategy
-          final result = await _unifiedImport.importZip(
-            zipPath: workingFilePath,
-            password: password.trim(),
-            destinationFolderId: _currentFolderId,
-            onProgress: (progress) {
-              // Could add progress indicator here if needed
-            },
-            onStatusUpdate: (status) {
-              // Could show status updates here if needed
-            },
-          );
+          // Import using ImportCoordinator (FEAT-003: routes through
+          // JobRunner + repo.addMedia so totalBytesUsed is always updated).
+          String? importError;
+          int importedFiles = 0;
+
+          try {
+            await for (final progress in _importCoordinator.importZip(
+              workingFilePath,
+              _currentFolderId,
+              password: password.trim(),
+              onStatus: (msg) {
+                // Status updates logged; no inline snackbar during import.
+                debugPrint('[ZIP import] $msg');
+              },
+            )) {
+              importedFiles = progress.completedFiles;
+            }
+          } catch (e) {
+            importError = e.toString();
+          }
 
           if (!mounted) return;
           messenger.hideCurrentSnackBar();
 
-          if (result.success) {
+          if (importError == null) {
             messenger.showSnackBar(
               SnackBar(
                 content: Text(
-                    'Successfully imported ${result.filesImported} files and ${result.foldersCreated} folders using ${result.strategy}'),
+                    'Successfully imported $importedFiles files via ImportCoordinator'),
                 backgroundColor: Colors.green,
               ),
             );
           } else {
             messenger.showSnackBar(
               SnackBar(
-                content: Text('Import failed: ${result.error}'),
+                content: Text('Import failed: $importError'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -1096,7 +1109,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         if (!mounted) return;
         messenger.hideCurrentSnackBar();
 
-        String errorMessage = SafZipImportService.getSafErrorMessage(e);
+        String errorMessage = e.toString();
 
         messenger.showSnackBar(
           SnackBar(
@@ -2029,6 +2042,7 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
 
   Future<void> _startImport() async {
     try {
+      // ignore: deprecated_member_use_from_same_package
       final safImportService = SafZipImportService(repo: widget.repo);
 
       final result = await safImportService.importFromZipUri(
@@ -2362,6 +2376,113 @@ class _MihonProgressDialogState extends State<_MihonProgressDialog> {
                 ),
               ]
             : null,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ZIP import dialog backed by ImportCoordinator (FEAT-003)
+// ---------------------------------------------------------------------------
+
+class _MobileZipImportDialog extends StatefulWidget {
+  const _MobileZipImportDialog({
+    required this.importCoordinator,
+    required this.zipPath,
+    required this.password,
+    required this.destinationFolderId,
+    required this.onComplete,
+  });
+
+  final ImportCoordinator importCoordinator;
+  final String zipPath;
+  final String password;
+  final int? destinationFolderId;
+  final VoidCallback onComplete;
+
+  @override
+  State<_MobileZipImportDialog> createState() => _MobileZipImportDialogState();
+}
+
+class _MobileZipImportDialogState extends State<_MobileZipImportDialog> {
+  String _statusText = 'Starting ZIP import…';
+  int _completedFiles = 0;
+  int _totalFiles = 0;
+  bool _isComplete = false;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _startImport();
+  }
+
+  Future<void> _startImport() async {
+    try {
+      await for (final progress in widget.importCoordinator.importZip(
+        widget.zipPath,
+        widget.destinationFolderId,
+        password: widget.password,
+        onStatus: (msg) {
+          if (mounted) setState(() => _statusText = msg);
+        },
+      )) {
+        if (!mounted) break;
+        setState(() {
+          _completedFiles = progress.completedFiles;
+          _totalFiles = progress.totalFiles;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _statusText = 'Import complete! $_completedFiles files imported.';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _errorText = e.toString();
+          _statusText = 'Import failed';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Import Complete' : 'Importing ZIP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!_isComplete) const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_statusText),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorText!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ],
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: fraction),
+            const SizedBox(height: 4),
+            if (_totalFiles > 0)
+              Text('$_completedFiles / $_totalFiles files',
+                  style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          if (_isComplete)
+            FilledButton(
+              onPressed: widget.onComplete,
+              child: const Text('Done'),
+            ),
+        ],
       ),
     );
   }

@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 import '../models/operation_job.dart';
 import '../models/operation_job_item.dart';
 import '../platform/android/android_thermal_monitor.dart';
+import '../services/archive_reader.dart';
 import '../services/blob_store.dart';
 import '../services/dart_crypto_engine.dart';
 import '../services/job_repository.dart';
@@ -35,8 +37,15 @@ class ImportProgress {
 
 /// Supported image/video extensions (mirrors BulkImportService).
 const _kImageExtensions = <String>[
-  '.jpg', '.jpeg', '.png', '.gif', '.bmp',
-  '.webp', '.svg', '.apng', '.avif',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.bmp',
+  '.webp',
+  '.svg',
+  '.apng',
+  '.avif',
 ];
 const _kVideoExtensions = <String>['.mp4', '.mkv', '.avi'];
 
@@ -166,6 +175,161 @@ class ImportCoordinator {
     onStatus?.call('Import complete.');
   }
 
+  /// Imports all files inside the ZIP at [zipPath] into the vault, placing
+  /// them under [destinationFolderId] (null = vault root).
+  ///
+  /// Uses [ArchiveReader] for memory-efficient streaming of unprotected ZIPs
+  /// (fixes B1: all imports go through [VaultRepository.addEncryptedBlobRecord]
+  /// which always updates [AppSettings.totalBytesUsed]).
+  ///
+  /// Each entry's plaintext temp file is deleted immediately after it is
+  /// encrypted — only one plaintext file exists on disk at a time.
+  Stream<ImportProgress> importZip(
+    String zipPath,
+    int? destinationFolderId, {
+    String password = '',
+    Function(String)? onStatus,
+  }) async* {
+    onStatus?.call('Opening ZIP…');
+
+    // ------------------------------------------------------------------ //
+    // 1. First-pass: count entries (needed for job.totalItems).
+    //    We stream twice only if needed; for a first pass we just count.
+    //    To avoid a double-open, we materialise a lightweight list of names.
+    // ------------------------------------------------------------------ //
+    // For simplicity, create a job with totalItems=0 and update as we go.
+    // This is acceptable for Phase 2/3 — progress fraction will still work
+    // for already-processed items.
+
+    final now = DateTime.now();
+    final job = OperationJob()
+      ..type = JobType.import
+      ..state = JobState.queued
+      ..totalItems = 0
+      ..completedItems = 0
+      ..totalBytes = 0
+      ..processedBytes = 0
+      ..createdAt = now
+      ..sourceDescriptor = zipPath;
+    await jobRepo.createJob(job);
+    await jobRepo.markJobState(job.id, JobState.running);
+
+    final masterKey = await storage.getOrCreateMasterKey32();
+    final reader = ArchiveReader();
+
+    var completedFiles = 0;
+    var processedBytes = 0;
+    var totalFiles = 0;
+    var totalBytes = 0;
+
+    // folderCache: relative dir path (using '/') → vault folder id
+    final folderCache = <String, int>{};
+    if (destinationFolderId != null) {
+      folderCache[''] = destinationFolderId;
+    }
+
+    try {
+      await for (final e in reader.entries(zipPath, password: password)) {
+        if (e is ArchiveEntrySkipped) {
+          debugPrint(
+              '[ImportCoordinator.importZip] skipped "${e.name}": ${e.reason}');
+          continue;
+        }
+
+        if (e is! ArchiveEntry) continue;
+
+        totalFiles += 1;
+        totalBytes += e.sizeBytes;
+
+        onStatus?.call('Importing ${path.basename(e.name)}…');
+
+        // ------------------------------------------------------------ //
+        // 2. Resolve vault folder for this entry
+        // ------------------------------------------------------------ //
+        final relDir = _zipEntryRelDir(e.name);
+        final leafFolderId = await _ensureZipFolderStructure(
+          relDir,
+          destinationFolderId,
+          folderCache,
+        );
+
+        // ------------------------------------------------------------ //
+        // 3. Create job item record
+        // ------------------------------------------------------------ //
+        final blobId = _randomBlobId();
+        final item = OperationJobItem()
+          ..jobId = job.id
+          ..state = JobItemState.running
+          ..sourcePath = e.tempPath
+          ..blobId = blobId
+          ..partialBlobPath = null
+          ..sourceSizeBytes = e.sizeBytes
+          ..parentFolderId = leafFolderId;
+        await jobRepo.createJobItem(item);
+
+        // ------------------------------------------------------------ //
+        // 4. Encrypt → commit blob → register DB record
+        // ------------------------------------------------------------ //
+        try {
+          final partialPath = await blobStore.createPartialPath(blobId);
+
+          final encryptResult = await crypto.encryptFile(
+            sourcePath: e.tempPath,
+            destPath: partialPath,
+            key: masterKey,
+          );
+
+          // Delete the plaintext temp file BEFORE processing the next entry.
+          try {
+            File(e.tempPath).deleteSync();
+          } catch (_) {}
+
+          await blobStore.commitPartial(blobId);
+
+          await repo.addEncryptedBlobRecord(
+            originalName: path.basename(e.name),
+            parentFolderId: leafFolderId,
+            blobId: blobId,
+            ivBase64: encryptResult.ivBase64,
+            byteSize: encryptResult.byteSize,
+          );
+
+          await jobRepo.markJobItemState(item.id, JobItemState.completed);
+
+          completedFiles += 1;
+          processedBytes += e.sizeBytes;
+
+          yield ImportProgress(
+            completedFiles: completedFiles,
+            totalFiles: totalFiles,
+            processedBytes: processedBytes,
+            totalBytes: totalBytes,
+            currentFile: e.name,
+            jobId: job.id,
+          );
+        } catch (err) {
+          // Clean up temp file on error.
+          try {
+            File(e.tempPath).deleteSync();
+          } catch (_) {}
+          await jobRepo.markJobItemState(
+            item.id,
+            JobItemState.failed,
+            failureReason: err.toString(),
+          );
+          debugPrint('[ImportCoordinator.importZip] item failed: $err');
+          // Continue to next entry rather than aborting.
+        }
+      }
+
+      await jobRepo.markJobState(job.id, JobState.completed);
+      onStatus?.call('Import complete.');
+    } catch (e) {
+      await jobRepo.markJobState(job.id, JobState.failed);
+      rethrow;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
@@ -220,6 +384,56 @@ class ImportCoordinator {
         continue;
       }
 
+      final existing = await repo.listFolders(parentId: currentParentId);
+      final match = existing.where((f) => f.name == part).firstOrNull;
+      if (match != null) {
+        cache[key] = match.id;
+        currentParentId = match.id;
+      } else {
+        final created =
+            await repo.createFolder(name: part, parentId: currentParentId);
+        cache[key] = created.id;
+        currentParentId = created.id;
+      }
+      accumulated = key;
+    }
+
+    return currentParentId;
+  }
+
+  /// Extracts the relative directory part of a ZIP entry name (using '/').
+  static String _zipEntryRelDir(String entryName) {
+    final normalized = entryName.replaceAll('\\', '/');
+    final idx = normalized.lastIndexOf('/');
+    if (idx <= 0) return '';
+    return normalized.substring(0, idx);
+  }
+
+  /// Like [_ensureFolderStructure] but works with ZIP entry relative paths
+  /// (directory separator is '/' regardless of platform).
+  Future<int?> _ensureZipFolderStructure(
+    String relDir,
+    int? rootParentId,
+    Map<String, int> cache,
+  ) async {
+    if (relDir.isEmpty) return rootParentId;
+
+    final cached = cache[relDir];
+    if (cached != null) return cached;
+
+    final parts = relDir.split('/');
+    var currentParentId = rootParentId;
+    var accumulated = '';
+
+    for (final part in parts) {
+      if (part.isEmpty) continue;
+      final key = accumulated.isEmpty ? part : '$accumulated/$part';
+      final hit = cache[key];
+      if (hit != null) {
+        currentParentId = hit;
+        accumulated = key;
+        continue;
+      }
       final existing = await repo.listFolders(parentId: currentParentId);
       final match = existing.where((f) => f.name == part).firstOrNull;
       if (match != null) {

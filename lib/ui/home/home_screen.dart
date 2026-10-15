@@ -3,13 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 
+import '../../app/export_coordinator.dart';
+import '../../app/import_coordinator.dart';
 import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/app_lifecycle_service.dart';
-import '../../services/bulk_import_service.dart' as bulk;
+import '../../services/blob_store.dart';
+import '../../services/dart_crypto_engine.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/import_export_service.dart';
+import '../../services/job_repository.dart';
 import '../../services/secure_storage_service.dart';
 import '../../services/undo_service.dart';
 import '../../services/vault_open_service.dart';
@@ -50,10 +54,19 @@ class _HomeScreenState extends State<HomeScreen> {
     secureStorage: SecureStorageService.instance,
   );
 
-  late final bulk.BulkImportService _bulkImport = bulk.BulkImportService(
+  late final ImportCoordinator _importCoordinator = ImportCoordinator(
+    repo: _repo,
+    jobRepo: JobRepository(),
+    blobStore: BlobStore(),
+    crypto: DartCryptoEngine(),
+    storage: SecureStorageService.instance,
+  );
+
+  late final ExportCoordinator _exportCoordinator = ExportCoordinator(
     repo: _repo,
     crypto: const FileCryptoService(),
-    secureStorage: SecureStorageService.instance,
+    storage: SecureStorageService.instance,
+    jobRepo: JobRepository(),
   );
 
   late final YomikiruIntegrationService _yomikiru = YomikiruIntegrationService(
@@ -988,18 +1001,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // Show progress dialog
+      // Show progress dialog — uses ImportCoordinator (FEAT-003).
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _BulkImportProgressDialog(
-          bulkImport: _bulkImport,
+        builder: (context) => _ImportCoordinatorProgressDialog(
+          importCoordinator: _importCoordinator,
           sourceFolderPath: folderPath,
           destinationFolderId: _currentFolderId,
           includeVideo: includeVideo,
           onComplete: () {
             debugPrint(
-                'DEBUG: Bulk import completed, closing dialog and refreshing');
+                'DEBUG: ImportCoordinator import completed, closing dialog and refreshing');
             Navigator.pop(context);
             _refresh();
           },
@@ -1442,12 +1455,6 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Export single folder as ZIP (Windows only)
   Future<void> _exportFolderAsZip(VaultFolder folder) async {
     try {
-      // Show export options dialog
-      final usePassword = await _showExportOptionsDialog();
-      if (usePassword == null) {
-        return; // User cancelled
-      }
-
       if (!mounted) return;
 
       // Choose export location
@@ -1464,18 +1471,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // Show progress dialog
+      // Show progress dialog — uses ExportCoordinator (FEAT-003).
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _ExportFolderZipProgressDialog(
-          importExport: _importExport,
+        builder: (context) => _ExportCoordinatorProgressDialog(
+          exportCoordinator: _exportCoordinator,
           folder: folder,
           outputZipPath: outputPath,
-          usePassword: usePassword,
-          onComplete: (result) {
+          onComplete: () {
             Navigator.pop(context); // Close progress dialog
-            _showExportSuccessDialog(result, usePassword);
+            _showExportSuccessDialog(
+              ExportAllResult(
+                zipPath: outputPath,
+                password: '',
+              ),
+              false, // ExportCoordinator doesn't add ZIP password
+            );
           },
           onError: (error) {
             Navigator.pop(context); // Close progress dialog
@@ -2357,31 +2369,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _BulkImportProgressDialog extends StatefulWidget {
-  const _BulkImportProgressDialog({
-    required this.bulkImport,
+// ---------------------------------------------------------------------------
+// ImportCoordinator progress dialog (FEAT-003)
+// ---------------------------------------------------------------------------
+
+class _ImportCoordinatorProgressDialog extends StatefulWidget {
+  const _ImportCoordinatorProgressDialog({
+    required this.importCoordinator,
     required this.sourceFolderPath,
     required this.destinationFolderId,
     required this.onComplete,
     this.includeVideo = false,
   });
 
-  final bulk.BulkImportService bulkImport;
+  final ImportCoordinator importCoordinator;
   final String sourceFolderPath;
   final int? destinationFolderId;
   final VoidCallback onComplete;
   final bool includeVideo;
 
   @override
-  State<_BulkImportProgressDialog> createState() =>
-      _BulkImportProgressDialogState();
+  State<_ImportCoordinatorProgressDialog> createState() =>
+      _ImportCoordinatorProgressDialogState();
 }
 
-class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
-  String _currentProgress = 'Starting import...';
-  double _byteProgress = 0.0;
+class _ImportCoordinatorProgressDialogState
+    extends State<_ImportCoordinatorProgressDialog> {
+  String _statusText = 'Starting import…';
+  int _completedFiles = 0;
+  int _totalFiles = 0;
   bool _isComplete = false;
-  bulk.BulkImportResult? _result;
+  String? _errorText;
 
   @override
   void initState() {
@@ -2391,35 +2409,32 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
 
   Future<void> _startImport() async {
     try {
-      final result = await widget.bulkImport.importFolder(
-        sourceFolderPath: widget.sourceFolderPath,
-        destinationFolderId: widget.destinationFolderId,
+      await for (final progress in widget.importCoordinator.importFolder(
+        widget.sourceFolderPath,
+        widget.destinationFolderId,
         includeVideo: widget.includeVideo,
-        onProgress: (progress) {
-          if (mounted) {
-            setState(() => _currentProgress = progress);
-          }
+        onStatus: (msg) {
+          if (mounted) setState(() => _statusText = msg);
         },
-        onByteProgress: (fraction) {
-          if (mounted) {
-            setState(() => _byteProgress = fraction);
-          }
-        },
-      );
-
+      )) {
+        if (!mounted) break;
+        setState(() {
+          _completedFiles = progress.completedFiles;
+          _totalFiles = progress.totalFiles;
+        });
+      }
       if (mounted) {
         setState(() {
-          _result = result;
           _isComplete = true;
-          _currentProgress = 'Import completed!';
-          _byteProgress = 1.0;
+          _statusText = 'Import complete!';
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isComplete = true;
-          _currentProgress = 'Import failed: $e';
+          _errorText = e.toString();
+          _statusText = 'Import failed';
         });
       }
     }
@@ -2427,45 +2442,140 @@ class _BulkImportProgressDialogState extends State<_BulkImportProgressDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Importing Folder'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!_isComplete) const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(_currentProgress),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(value: _byteProgress),
-          const SizedBox(height: 4),
-          Text(
-            '${(_byteProgress * 100).toInt()}%',
-            style: const TextStyle(fontSize: 12),
-          ),
-          if (_result != null) ...[
+    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Import Complete' : 'Importing Folder'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!_isComplete) const CircularProgressIndicator(),
             const SizedBox(height: 16),
-            Text('Files imported: ${_result!.filesImported}'),
-            Text('Folders created: ${_result!.foldersCreated}'),
-            if (_result!.errors.isNotEmpty)
-              Text('Errors: ${_result!.errors.length}',
-                  style: const TextStyle(color: Colors.orange)),
+            Text(_statusText),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorText!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ],
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: fraction),
+            const SizedBox(height: 4),
+            if (_totalFiles > 0)
+              Text('$_completedFiles / $_totalFiles files',
+                  style: const TextStyle(fontSize: 12)),
           ],
+        ),
+        actions: [
+          if (_isComplete)
+            FilledButton(
+              onPressed: widget.onComplete,
+              child: const Text('Done'),
+            ),
         ],
       ),
-      actions: [
-        if (_isComplete)
-          FilledButton(
-            onPressed: () {
-              widget.onComplete();
-            },
-            child: const Text('Done'),
-          ),
-      ],
     );
   }
 }
 
-/// Export All progress dialog for Windows
+// ---------------------------------------------------------------------------
+// ExportCoordinator progress dialog (FEAT-003)
+// ---------------------------------------------------------------------------
+
+class _ExportCoordinatorProgressDialog extends StatefulWidget {
+  const _ExportCoordinatorProgressDialog({
+    required this.exportCoordinator,
+    required this.folder,
+    required this.outputZipPath,
+    required this.onComplete,
+    required this.onError,
+  });
+
+  final ExportCoordinator exportCoordinator;
+  final VaultFolder folder;
+  final String outputZipPath;
+  final VoidCallback onComplete;
+  final void Function(String) onError;
+
+  @override
+  State<_ExportCoordinatorProgressDialog> createState() =>
+      _ExportCoordinatorProgressDialogState();
+}
+
+class _ExportCoordinatorProgressDialogState
+    extends State<_ExportCoordinatorProgressDialog> {
+  int _completedFiles = 0;
+  int _totalFiles = 0;
+  bool _isComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startExport();
+  }
+
+  Future<void> _startExport() async {
+    try {
+      await for (final progress in widget.exportCoordinator.exportFolder(
+        widget.folder.id,
+        widget.outputZipPath,
+      )) {
+        if (!mounted) break;
+        setState(() {
+          _completedFiles = progress.completedFiles;
+          _totalFiles = progress.totalFiles;
+        });
+      }
+      if (mounted) {
+        setState(() => _isComplete = true);
+        widget.onComplete();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isComplete = true);
+        widget.onError(e.toString());
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Export Complete' : 'Exporting Folder'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!_isComplete) const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_isComplete
+                ? 'Export completed successfully!'
+                : 'Exporting ${widget.folder.name}…'),
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: fraction),
+            const SizedBox(height: 4),
+            if (_totalFiles > 0)
+              Text('$_completedFiles / $_totalFiles files',
+                  style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: _isComplete
+            ? [
+                FilledButton(
+                  onPressed: () {
+                    // Closed by onComplete callback
+                  },
+                  child: const Text('Done'),
+                ),
+              ]
+            : null,
+      ),
+    );
+  }
+}
+
 class _ExportAllProgressDialog extends StatefulWidget {
   const _ExportAllProgressDialog({
     required this.importExport,
