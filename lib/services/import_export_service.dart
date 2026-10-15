@@ -11,8 +11,11 @@ import 'package:path_provider/path_provider.dart';
 import '../db/isar_db.dart';
 import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
+import 'crypto_engine.dart';
+import 'dart_crypto_engine.dart';
 import 'file_crypto_service.dart';
 import 'secure_storage_service.dart';
+import 'vault_paths.dart';
 import 'vault_repository.dart';
 
 class ExportAllResult {
@@ -34,11 +37,19 @@ class ImportExportService {
     required this.repo,
     required this.crypto,
     required this.secureStorage,
-  });
+    CryptoEngine? cryptoEngine,
+  }) : _cryptoEngine = cryptoEngine ?? DartCryptoEngine();
 
   final VaultRepository repo;
+
+  /// Legacy v0-only service — kept for API compatibility. Actual decryption
+  /// is handled by [_cryptoEngine] which auto-detects v0 vs v1 blobs.
   final FileCryptoService crypto;
   final SecureStorageService secureStorage;
+
+  /// Handles both v0 (AES-256-CTR) and v1 (AES-256-GCM) blobs via
+  /// auto-detection. Defaults to [DartCryptoEngine].
+  final CryptoEngine _cryptoEngine;
 
   Future<String?> pickExportPath() {
     return FilePicker.platform.saveFile(
@@ -373,11 +384,14 @@ class ImportExportService {
       await outDir.create(recursive: true);
 
       final outPath = _uniqueFilePath(outDir, file.originalName);
-      await crypto.decryptBlobToFile(
-        storedBlobName: file.storedBlobName,
+      final blobsDir = await VaultPaths.ensureVaultBlobsDir();
+      final blobPath =
+          '${blobsDir.path}${Platform.pathSeparator}${file.storedBlobName}';
+      await _cryptoEngine.decryptFile(
+        sourcePath: blobPath,
+        destPath: outPath,
+        key: masterKey32,
         ivBase64: file.ivBase64,
-        masterKey32: masterKey32,
-        outputFile: File(outPath),
       );
     }
   }
@@ -466,11 +480,14 @@ class ImportExportService {
       await outDir.create(recursive: true);
 
       final outPath = _uniqueFilePath(outDir, file.originalName);
-      await crypto.decryptBlobToFile(
-        storedBlobName: file.storedBlobName,
+      final blobsDir2 = await VaultPaths.ensureVaultBlobsDir();
+      final blobPath2 =
+          '${blobsDir2.path}${Platform.pathSeparator}${file.storedBlobName}';
+      await _cryptoEngine.decryptFile(
+        sourcePath: blobPath2,
+        destPath: outPath,
+        key: masterKey32,
         ivBase64: file.ivBase64,
-        masterKey32: masterKey32,
-        outputFile: File(outPath),
       );
     }
   }

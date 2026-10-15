@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../models/vault_file.dart';
+import 'crypto_engine.dart';
+import 'dart_crypto_engine.dart';
 import 'file_crypto_service.dart';
 import 'file_open_service.dart';
 import 'secure_storage_service.dart';
@@ -11,11 +14,20 @@ class VaultOpenService {
     required this.crypto,
     required this.secureStorage,
     required this.opener,
-  });
+    CryptoEngine? cryptoEngine,
+  }) : _cryptoEngine = cryptoEngine ?? DartCryptoEngine();
 
+  /// Legacy v0-only service — kept for API compatibility; actual decryption
+  /// now goes through [_cryptoEngine] which auto-detects v0 vs v1 blobs.
   final FileCryptoService crypto;
   final SecureStorageService secureStorage;
   final FileOpenService opener;
+
+  /// Handles both v0 (AES-256-CTR) and v1 (AES-256-GCM) blobs via
+  /// auto-detection. Defaults to [DartCryptoEngine] so existing callers that
+  /// don't pass a [cryptoEngine] are automatically upgraded to v1-aware
+  /// decryption.
+  final CryptoEngine _cryptoEngine;
 
   Future<File> decryptToCachedTempFile(VaultFile file) async {
     final masterKey32 = await secureStorage.getOrCreateMasterKey32();
@@ -25,18 +37,14 @@ class VaultOpenService {
 
     // Deterministic cache name prevents repeated decrypts.
     final safeName = _safeFilename(file.originalName);
-    final outFile = File('${dir.path}${Platform.pathSeparator}${file.storedBlobName}--$safeName');
+    final outFile = File(
+        '${dir.path}${Platform.pathSeparator}${file.storedBlobName}--$safeName');
     if (await outFile.exists()) {
       final len = await outFile.length();
       if (len > 0) return outFile;
     }
 
-    await crypto.decryptBlobToFile(
-      storedBlobName: file.storedBlobName,
-      ivBase64: file.ivBase64,
-      masterKey32: masterKey32,
-      outputFile: outFile,
-    );
+    await _decryptBlob(file, masterKey32, outFile);
     return outFile;
   }
 
@@ -50,22 +58,37 @@ class VaultOpenService {
   Future<void> decryptToSpecificPath(VaultFile file, String outputPath) async {
     final masterKey32 = await secureStorage.getOrCreateMasterKey32();
     final outputFile = File(outputPath);
-    
+
     // Ensure output directory exists
     await outputFile.parent.create(recursive: true);
-    
-    await crypto.decryptBlobToFile(
-      storedBlobName: file.storedBlobName,
-      ivBase64: file.ivBase64,
-      masterKey32: masterKey32,
-      outputFile: outputFile,
-    );
+
+    await _decryptBlob(file, masterKey32, outputFile);
   }
 
   /// Decrypt a file to bytes (used by encrypted export service)
   Future<List<int>> decryptToBytes(VaultFile file) async {
     final tempFile = await decryptToCachedTempFile(file);
     return await tempFile.readAsBytes();
+  }
+
+  // ─── Internal: dispatch to the right decrypt path ──────────────────────
+
+  /// Decrypts [file]'s blob to [outputFile].
+  ///
+  /// Uses [_cryptoEngine] which auto-detects v0/v1 from the blob header,
+  /// so both legacy AES-256-CTR blobs and new AES-256-GCM blobs are handled
+  /// correctly.
+  Future<void> _decryptBlob(
+      VaultFile file, Uint8List masterKey32, File outputFile) async {
+    final blobsDir = await VaultPaths.ensureVaultBlobsDir();
+    final blobPath =
+        '${blobsDir.path}${Platform.pathSeparator}${file.storedBlobName}';
+    await _cryptoEngine.decryptFile(
+      sourcePath: blobPath,
+      destPath: outputFile.path,
+      key: masterKey32,
+      ivBase64: file.ivBase64,
+    );
   }
 
   static String _safeFilename(String name) {
@@ -92,4 +115,3 @@ class VaultOpenService {
     } catch (_) {}
   }
 }
-

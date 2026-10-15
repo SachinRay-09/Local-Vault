@@ -185,7 +185,7 @@ class VaultRepository {
     required int byteSize,
     String? mimeType,
     int formatVersion =
-        0, // new optional param — defaults to 0 for backward compat
+        0, // stores whatever the engine produces; v1 default set in EncryptionOptions
   }) async {
     // Derive the stored blob name: JobRunner writes '<blobId>.bin'.
     final storedBlobName = '$blobId.bin';

@@ -9,9 +9,12 @@ import '../models/operation_job.dart';
 import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
 import '../services/archive_writer.dart';
+import '../services/crypto_engine.dart';
+import '../services/dart_crypto_engine.dart';
 import '../services/file_crypto_service.dart';
 import '../services/job_repository.dart';
 import '../services/secure_storage_service.dart';
+import '../services/vault_paths.dart';
 import '../services/vault_repository.dart';
 import 'job_runner.dart';
 
@@ -41,12 +44,21 @@ class ExportCoordinator {
     required this.crypto,
     required this.storage,
     required this.jobRepo,
-  }) : assert(Platform.isWindows, 'ExportCoordinator is Windows-only');
+    CryptoEngine? cryptoEngine,
+  })  : assert(Platform.isWindows, 'ExportCoordinator is Windows-only'),
+        _cryptoEngine = cryptoEngine ?? DartCryptoEngine();
 
   final VaultRepository repo;
+
+  /// Legacy v0-only service — kept for API compatibility. Actual decryption
+  /// is handled by [_cryptoEngine] which auto-detects v0 vs v1 blobs.
   final FileCryptoService crypto;
   final SecureStorageService storage;
   final JobRepository jobRepo;
+
+  /// Handles both v0 (AES-256-CTR) and v1 (AES-256-GCM) blobs via
+  /// auto-detection. Defaults to [DartCryptoEngine].
+  final CryptoEngine _cryptoEngine;
 
   /// Exports the folder identified by [folderId] and all its descendants to
   /// the ZIP at [destinationZipPath].
@@ -153,12 +165,15 @@ class ExportCoordinator {
         );
 
         try {
-          // Decrypt blob → temp file.
-          await crypto.decryptBlobToFile(
-            storedBlobName: file.storedBlobName,
+          // Decrypt blob → temp file. _cryptoEngine auto-detects v0/v1.
+          final blobsDir = await VaultPaths.ensureVaultBlobsDir();
+          final blobPath =
+              '${blobsDir.path}${Platform.pathSeparator}${file.storedBlobName}';
+          await _cryptoEngine.decryptFile(
+            sourcePath: blobPath,
+            destPath: tempPath,
+            key: masterKey,
             ivBase64: file.ivBase64,
-            masterKey32: masterKey,
-            outputFile: File(tempPath),
           );
 
           // Compute entry path inside ZIP.
