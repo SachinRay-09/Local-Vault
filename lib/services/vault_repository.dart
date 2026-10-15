@@ -241,6 +241,8 @@ class VaultRepository {
     final fileIds = <int>[];
     final blobNames = <String>[];
 
+    var totalDeletedBytes = 0;
+
     while (toVisit.isNotEmpty) {
       final current = toVisit.removeLast();
       final childFolders =
@@ -257,8 +259,15 @@ class VaultRepository {
       for (final vf in files) {
         fileIds.add(vf.id);
         blobNames.add(vf.storedBlobName);
+        totalDeletedBytes += vf.byteSize;
       }
     }
+
+    // Decrement the running storage counter in the same transaction.
+    final settings =
+        await _isar.appSettings.where().anyId().findFirst() ?? AppSettings();
+    settings.totalBytesUsed = (settings.totalBytesUsed - totalDeletedBytes)
+        .clamp(0, double.maxFinite.toInt());
 
     await _isar.writeTxn(() async {
       for (final id in fileIds) {
@@ -267,6 +276,7 @@ class VaultRepository {
       for (final id in folderIds) {
         await _isar.vaultFolders.delete(id);
       }
+      await _isar.appSettings.put(settings);
     });
 
     // Best-effort delete blobs.

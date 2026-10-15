@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -9,6 +10,23 @@ import 'package:pointycastle/digests/sha256.dart';
 import 'package:pointycastle/key_derivators/api.dart' show Pbkdf2Parameters;
 import 'package:pointycastle/key_derivators/pbkdf2.dart';
 import 'package:pointycastle/macs/hmac.dart';
+
+// ---------------------------------------------------------------------------
+// Top-level worker — must be top-level to cross isolate boundaries.
+// ---------------------------------------------------------------------------
+
+/// PBKDF2-HMAC-SHA256 worker used by [SecureStorageService.setPassword].
+/// Returns a (salt, hash, iterations) record so the caller can write all three
+/// fields to secure storage.
+({Uint8List salt, Uint8List hash, int iters}) _computePbkdf2Hash(
+    String password) {
+  const iters = 120000;
+  final salt = SecureStorageService.generateRandomBytes(16);
+  final derivator = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))
+    ..init(Pbkdf2Parameters(salt, iters, 32));
+  final hash = derivator.process(Uint8List.fromList(utf8.encode(password)));
+  return (salt: salt, hash: hash, iters: iters);
+}
 
 class SecureStorageService {
   SecureStorageService._(this._storage);
@@ -36,12 +54,14 @@ class SecureStorageService {
   }
 
   Future<void> setPassword(String password) async {
-    final salt = _randomBytes(16);
-    const iters = 120000;
-    final hash = _pbkdf2Sha256(password, salt, iterations: iters, outLen: 32);
-    await _storage.write(key: kPasswordSaltB64, value: base64Encode(salt));
-    await _storage.write(key: kPasswordHashB64, value: base64Encode(hash));
-    await _storage.write(key: kPasswordIterations, value: iters.toString());
+    // Run the expensive KDF in a background isolate to keep the UI responsive.
+    final result = await Isolate.run(() => _computePbkdf2Hash(password));
+    await _storage.write(
+        key: kPasswordSaltB64, value: base64Encode(result.salt));
+    await _storage.write(
+        key: kPasswordHashB64, value: base64Encode(result.hash));
+    await _storage.write(
+        key: kPasswordIterations, value: result.iters.toString());
 
     // Reset lock state when password changes.
     await _storage.write(key: kFailedAttempts, value: '0');
@@ -98,6 +118,10 @@ class SecureStorageService {
     return Uint8List.fromList(
         List<int>.generate(length, (_) => r.nextInt(256)));
   }
+
+  /// Public wrapper for generating cryptographically-random bytes.
+  /// Used by top-level isolate workers that cannot access private members.
+  static Uint8List generateRandomBytes(int length) => _randomBytes(length);
 
   static Uint8List _saltedSha256(String secret, Uint8List salt) {
     final data = <int>[...utf8.encode(secret), ...salt];

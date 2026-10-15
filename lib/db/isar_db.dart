@@ -4,6 +4,8 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/app_settings.dart';
+import '../models/operation_job.dart';
+import '../models/operation_job_item.dart';
 import '../models/vault_file.dart';
 import '../models/vault_folder.dart';
 import '../services/vault_paths.dart';
@@ -36,6 +38,8 @@ class IsarDb {
         VaultFolderSchema,
         VaultFileSchema,
         AppSettingsSchema,
+        OperationJobSchema,
+        OperationJobItemSchema,
       ],
       directory: supportDir.path,
       name: 'local_vault',
