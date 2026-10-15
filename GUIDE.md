@@ -44,7 +44,9 @@ Complete guide for using Local Vault to securely store and manage your private m
 - **NO PASSWORD RECOVERY** - If you forget it, your data is lost forever
 - This is by design for maximum security
 
-Note: Your password unlocks the app. The actual vault encryption key is stored separately in the OS keystore (Windows Credential Manager / Android Keystore). Security questions allow resetting your login password only — they cannot recover your encrypted data if the key is lost.
+**Your password is cryptographically required to access your vault.** The encryption key is wrapped by a key derived from your password via PBKDF2-HMAC-SHA256 (200,000 iterations). Forgetting your password means permanent loss of access to your encrypted files.
+
+**Password Recovery:** There is no backdoor. Security questions reset the app lock only — they do NOT recover your encrypted files. Write your password down and store it somewhere safe.
 
 **Example Strong Password**: `MyM@nga2024!Vault`
 

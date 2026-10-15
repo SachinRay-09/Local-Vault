@@ -102,6 +102,9 @@ class SecureStorageService {
       _storage.write(key: key, value: value);
   Future<String?> readString(String key) => _storage.read(key: key);
 
+  /// Deletes the value stored under [key] from secure storage.
+  Future<void> delete(String key) => _storage.delete(key: key);
+
   Future<Uint8List> getOrCreateMasterKey32() async {
     final existing = await _storage.read(key: kMasterKeyB64);
     if (existing != null && existing.isNotEmpty) {

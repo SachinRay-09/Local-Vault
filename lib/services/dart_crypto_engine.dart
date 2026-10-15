@@ -17,6 +17,21 @@ import 'package:pointycastle/stream/sic.dart';
 import 'crypto_engine.dart';
 
 // ---------------------------------------------------------------------------
+// AuthenticationFailure exception
+// ---------------------------------------------------------------------------
+
+/// Thrown by [DartCryptoEngine.unwrapDek] when the GCM authentication tag
+/// fails — indicating a wrong key or tampered ciphertext.
+///
+/// Callers MUST NOT return partial or garbage DEK bytes on this exception.
+class AuthenticationFailure implements Exception {
+  const AuthenticationFailure([this.message = 'Authentication failed.']);
+  final String message;
+  @override
+  String toString() => 'AuthenticationFailure: $message';
+}
+
+// ---------------------------------------------------------------------------
 // Top-level workers — must be top-level to cross isolate boundaries.
 // ---------------------------------------------------------------------------
 
@@ -378,5 +393,87 @@ class DartCryptoEngine implements CryptoEngine {
     return Isolate.run(
       () => _pbkdf2EngineWorker((password, salt, iterations, outLen)),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 5: DEK wrapping / unwrapping
+  // ---------------------------------------------------------------------------
+
+  /// Derives a 32-byte Key Encryption Key (KEK) from [password] + [salt] using
+  /// PBKDF2-HMAC-SHA256 with [iterations] rounds.
+  ///
+  /// Runs in [Isolate.run] to keep the UI thread free.
+  /// Zero the returned bytes after use.
+  static Future<Uint8List> deriveKek(
+      String password, Uint8List salt, int iterations) {
+    return Isolate.run(
+      () => _pbkdf2EngineWorker((password, salt, iterations, 32)),
+    );
+  }
+
+  /// Wraps [dek] with [kek] using AES-256-GCM.
+  ///
+  /// AAD = UTF-8("local_vault_dek_wrap_v1") — domain-separates this GCM
+  /// operation from file-level AEAD.
+  ///
+  /// Returns a named record with three independent byte arrays:
+  ///   - nonce       12 bytes (cryptographically random)
+  ///   - ciphertext  32 bytes (encrypted DEK)
+  ///   - tag         16 bytes (GCM authentication tag)
+  ///
+  /// Store each field separately in [VaultKeyEnvelope] — do NOT concatenate.
+  static ({Uint8List nonce, Uint8List ciphertext, Uint8List tag}) wrapDek(
+      Uint8List dek, Uint8List kek) {
+    assert(kek.length == 32, 'KEK must be 32 bytes');
+    assert(dek.length == 32, 'DEK must be 32 bytes');
+
+    final nonce = _randomBytes(12);
+    final aad = Uint8List.fromList(utf8.encode('local_vault_dek_wrap_v1'));
+
+    final gcm = GCMBlockCipher(AESEngine())
+      ..init(true, AEADParameters(KeyParameter(kek), 128, nonce, aad));
+    // GCM.process on 32-byte input returns 48 bytes: 32 ciphertext + 16 tag.
+    final cipherAndTag = gcm.process(dek);
+
+    return (
+      nonce: nonce,
+      ciphertext: Uint8List.sublistView(cipherAndTag, 0, 32),
+      tag: Uint8List.sublistView(cipherAndTag, 32, 48),
+    );
+  }
+
+  /// Unwraps a wrapped DEK.
+  ///
+  /// [ciphertext] — 32-byte encrypted DEK.
+  /// [tag]        — 16-byte GCM authentication tag.
+  /// [nonce]      — 12-byte GCM nonce.
+  /// [kek]        — 32-byte Key Encryption Key.
+  ///
+  /// Throws [AuthenticationFailure] if the tag does not match (wrong password
+  /// or tampered storage).  NEVER returns garbage plaintext bytes.
+  static Uint8List unwrapDek(
+      Uint8List ciphertext, Uint8List tag, Uint8List nonce, Uint8List kek) {
+    assert(kek.length == 32, 'KEK must be 32 bytes');
+    assert(ciphertext.length == 32, 'Ciphertext must be 32 bytes');
+    assert(tag.length == 16, 'Tag must be 16 bytes');
+    assert(nonce.length == 12, 'Nonce must be 12 bytes');
+
+    // Reconstruct the combined ciphertext+tag that GCM expects on decryption.
+    final combined = Uint8List(48)
+      ..setRange(0, 32, ciphertext)
+      ..setRange(32, 48, tag);
+
+    final aad = Uint8List.fromList(utf8.encode('local_vault_dek_wrap_v1'));
+    final gcm = GCMBlockCipher(AESEngine())
+      ..init(false, AEADParameters(KeyParameter(kek), 128, nonce, aad));
+
+    try {
+      return gcm.process(combined); // returns 32-byte plaintext DEK
+    } on InvalidCipherTextException {
+      throw const AuthenticationFailure(
+          'DEK unwrap failed: wrong password or tampered envelope.');
+    } catch (e) {
+      throw AuthenticationFailure('DEK unwrap failed: $e');
+    }
   }
 }

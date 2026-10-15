@@ -25,8 +25,8 @@ Local Vault is a cross-platform encrypted storage application designed for **com
 ## ✨ Key Features
 
 ### Security & Privacy
-- **AES-256 Encryption** - Industry-standard AES-256 for all stored files
-- **Secure Key Storage** - Keys stored in OS-level secure storage. Your password unlocks the app; the vault encryption key is stored separately in the OS keystore (Windows Credential Manager / Android Keystore).
+- **AES-256 Encryption** - Industry-standard AES-256-GCM for all stored files
+- **Secure Key Storage** - PBKDF2-derived Key Encryption Key (200,000 iterations, HMAC-SHA256) wraps the vault DEK stored in the OS keystore. Your password is cryptographically required to decrypt your files.
 - **Password Protection** - Master password guards your vault
 - **No Cloud Sync** - Everything stays local, no internet required
 
@@ -113,11 +113,15 @@ Encryption is CPU-intensive. Large files (1GB+) may take 5-10 minutes to import 
 ## 🔒 Security & Privacy
 
 ### What We Do
-✅ AES-256 encryption for all files  
+✅ AES-256-GCM encryption for all files  
 ✅ Secure key storage in OS keychain  
 ✅ 100% local storage, no cloud  
 ✅ No data collection or tracking  
 ✅ Works completely offline  
+
+### Password Recovery
+
+**Password Recovery:** If you forget your password, your vault data CANNOT be recovered. There is no backdoor. Security questions reset the app lock only — they do not recover encrypted files. Back up your password.
 
 ### What We DON'T Do
 ❌ No cloud backup (by design)  

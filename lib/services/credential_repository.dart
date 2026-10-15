@@ -1,6 +1,8 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
+import '../models/vault_key_envelope.dart';
 import 'secure_storage_service.dart';
 
 /// Thin wrapper around [SecureStorageService] that exposes credential data as
@@ -10,6 +12,10 @@ class CredentialRepository {
       : _storage = storage ?? SecureStorageService.instance;
 
   final SecureStorageService _storage;
+
+  // Phase 5 envelope storage keys.
+  static const String _kEnvelopeJson = 'vault_key_envelope_v2';
+  static const String _kRollbackKey = 'vault_key_rollback_v2';
 
   /// Returns the raw master-key bytes stored under [SecureStorageService.kMasterKeyB64],
   /// or null if none has been created yet.
@@ -52,5 +58,54 @@ class CredentialRepository {
       diff |= a[i] ^ b[i];
     }
     return diff == 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 5: envelope storage methods
+  // ---------------------------------------------------------------------------
+
+  /// Serialises [envelope] to JSON and stores it in secure storage.
+  Future<void> storeEnvelope(VaultKeyEnvelope envelope) async {
+    await _storage.writeString(_kEnvelopeJson, jsonEncode(envelope.toJson()));
+  }
+
+  /// Loads and deserialises the stored envelope, or returns null if none
+  /// exists or the stored JSON cannot be parsed.
+  Future<VaultKeyEnvelope?> loadEnvelope() async {
+    final s = await _storage.readString(_kEnvelopeJson);
+    if (s == null || s.isEmpty) return null;
+    try {
+      return VaultKeyEnvelope.fromJson(
+          Map<String, dynamic>.from(jsonDecode(s) as Map));
+    } catch (e) {
+      debugPrint('[CredentialRepository] Failed to parse envelope: $e');
+      return null;
+    }
+  }
+
+  /// Returns true if a Phase 5 envelope is present in secure storage.
+  Future<bool> hasEnvelope() async {
+    final s = await _storage.readString(_kEnvelopeJson);
+    return s != null && s.isNotEmpty;
+  }
+
+  /// Stores [legacyMasterKey] under the rollback key as base64.
+  ///
+  /// INVARIANT: call this BEFORE every [storeEnvelope] call so the old key
+  /// is recoverable if the process is killed mid-migration.
+  Future<void> storeRollbackMarker(Uint8List legacyMasterKey) async {
+    await _storage.writeString(_kRollbackKey, base64Encode(legacyMasterKey));
+  }
+
+  /// Deletes the rollback marker after a successful migration or password
+  /// change.
+  Future<void> deleteRollbackMarker() async {
+    await _storage.delete(_kRollbackKey);
+  }
+
+  /// Deletes the envelope.  Used on migration failure or password-change
+  /// rollback.
+  Future<void> deleteEnvelope() async {
+    await _storage.delete(_kEnvelopeJson);
   }
 }

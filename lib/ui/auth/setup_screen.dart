@@ -26,6 +26,7 @@ class _SetupScreenState extends State<SetupScreen> {
   final _q2Answer = TextEditingController();
 
   bool _busy = false;
+  bool _policyAcknowledged = false;
   String? _error;
 
   @override
@@ -73,10 +74,14 @@ class _SetupScreenState extends State<SetupScreen> {
               key: _formKey,
               child: ListView(
                 children: [
-                  const Text('Create an app password to unlock your vault.'),
+                  const Text('Create an app password to protect your vault.'),
                   const SizedBox(height: 8),
                   const Text(
-                    'Your password unlocks the app. The vault encryption key is stored in the OS keystore and is separate from your password. Security questions allow resetting your unlock password only — they cannot recover your encrypted data.',
+                    'Your password is cryptographically required to access '
+                    'your vault. The encryption key is wrapped by a key '
+                    'derived from your password via PBKDF2-HMAC-SHA256 '
+                    '(200,000 iterations). Forgetting your password means '
+                    'permanent loss of access to your encrypted files.',
                     style: TextStyle(fontSize: 12),
                   ),
                   const SizedBox(height: 12),
@@ -102,6 +107,48 @@ class _SetupScreenState extends State<SetupScreen> {
                     },
                   ),
                   const SizedBox(height: 24),
+                  // --- Phase 5 security notice ---
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .errorContainer
+                          .withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: Theme.of(context).colorScheme.error),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '⚠️  IMPORTANT: Password Recovery',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Your password is cryptographically required to '
+                          'access your vault. If you forget your password, '
+                          'your vault data cannot be recovered. Security '
+                          'questions reset the app lock only — they do NOT '
+                          'recover your encrypted files. Write your password '
+                          'down and store it safely.',
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          title: const Text(
+                              'I understand: forgotten password = permanent data loss'),
+                          value: _policyAcknowledged,
+                          onChanged: (v) =>
+                              setState(() => _policyAcknowledged = v ?? false),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          dense: true,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   const Text(
                       'Recovery questions (needed if you forget password):'),
                   const SizedBox(height: 12),
@@ -197,7 +244,7 @@ class _SetupScreenState extends State<SetupScreen> {
                             color: Theme.of(context).colorScheme.error)),
                   const SizedBox(height: 8),
                   FilledButton(
-                    onPressed: _busy ? null : _submit,
+                    onPressed: (_busy || !_policyAcknowledged) ? null : _submit,
                     child: _busy
                         ? const CircularProgressIndicator()
                         : const Text('Create vault'),

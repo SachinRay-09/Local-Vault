@@ -4,6 +4,9 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
+import '../models/vault_key_envelope.dart';
+import 'credential_repository.dart';
+import 'dart_crypto_engine.dart';
 import 'secure_storage_service.dart';
 
 class AuthState {
@@ -36,10 +39,40 @@ class AuthService {
     required String q2Text,
     required String q2Answer,
   }) async {
-    // Ensure master key exists (used to encrypt files). This must survive password resets.
-    await secureStorage.getOrCreateMasterKey32();
+    // 1. Generate a fresh random 32-byte DEK.
+    final dek = SecureStorageService.generateRandomBytes(32);
 
+    // 2. Store as master_key_b64 (belt-and-suspenders / legacy compat).
+    await secureStorage.writeString(
+        SecureStorageService.kMasterKeyB64, base64Encode(dek));
+
+    // 3. Store the password hash (for login verification).
     await secureStorage.setPassword(password);
+
+    // 4. Derive KEK + wrap DEK into envelope — off UI thread via deriveKek.
+    const kekIterations = 200000;
+    final salt = SecureStorageService.generateRandomBytes(16);
+    final kek = await DartCryptoEngine.deriveKek(password, salt, kekIterations);
+    final wrapped = DartCryptoEngine.wrapDek(dek, kek);
+
+    final envelope = VaultKeyEnvelope(
+      vaultVersion: 2,
+      kdfAlgorithm: 'pbkdf2_sha256',
+      kdfSalt: base64Encode(salt),
+      kdfParams: {'iterations': kekIterations},
+      wrappedDek: base64Encode(wrapped.ciphertext),
+      wrappedDekNonce: base64Encode(wrapped.nonce),
+      wrappedDekTag: base64Encode(wrapped.tag),
+    );
+
+    // No rollback marker needed during initial setup (no legacy key exists yet).
+    final repo = CredentialRepository(storage: secureStorage);
+    await repo.storeEnvelope(envelope);
+
+    // Zero the ephemeral KEK.
+    kek.fillRange(0, kek.length, 0);
+
+    // 5. Store security questions (unchanged).
     await _setSecurityQuestions(
       q1Text: q1Text,
       q1Answer: q1Answer,
@@ -62,7 +95,10 @@ class AuthService {
     final q1HashB64 = await secureStorage.readString(kQ1HashB64);
     final q2SaltB64 = await secureStorage.readString(kQ2SaltB64);
     final q2HashB64 = await secureStorage.readString(kQ2HashB64);
-    if (q1SaltB64 == null || q1HashB64 == null || q2SaltB64 == null || q2HashB64 == null) {
+    if (q1SaltB64 == null ||
+        q1HashB64 == null ||
+        q2SaltB64 == null ||
+        q2HashB64 == null) {
       return false;
     }
 
@@ -140,4 +176,3 @@ class AuthService {
     return diff == 0;
   }
 }
-
