@@ -7,7 +7,7 @@ import '../models/operation_job.dart';
 import '../models/operation_job_item.dart';
 import '../platform/android/android_thermal_monitor.dart';
 import '../services/blob_store.dart';
-import '../services/dart_crypto_engine.dart';
+import '../services/crypto_engine.dart';
 import '../services/job_repository.dart';
 import '../services/vault_repository.dart';
 
@@ -54,7 +54,7 @@ class JobRunner {
   });
 
   final BlobStore blobStore;
-  final DartCryptoEngine crypto;
+  final CryptoEngine crypto;
   final VaultRepository repo;
   final JobRepository jobRepo;
   final AndroidThermalMonitor? thermalMonitor;
@@ -143,6 +143,7 @@ class JobRunner {
           blobId: item.blobId,
           ivBase64: encryptResult.ivBase64,
           byteSize: encryptResult.byteSize,
+          formatVersion: encryptResult.formatVersion,
         );
 
         await jobRepo.markJobItemState(item.id, JobItemState.completed);

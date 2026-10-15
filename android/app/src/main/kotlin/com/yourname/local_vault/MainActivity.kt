@@ -15,8 +15,13 @@ class MainActivity : FlutterActivity() {
   private val CHANNEL = "local_vault/file_opener"
   private val THERMAL_CHANNEL = "thermal_protection"
 
+  private var cryptoBridge: CryptoBridge? = null
+
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+
+    // Crypto native bridge (AES-256-GCM for v1 blobs)
+    cryptoBridge = CryptoBridge(flutterEngine.dartExecutor.binaryMessenger)
 
     // File opener channel
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
@@ -82,5 +87,11 @@ class MainActivity : FlutterActivity() {
         else -> result.notImplemented()
       }
     }
+  }
+
+  override fun onDestroy() {
+    cryptoBridge?.destroy()
+    cryptoBridge = null
+    super.onDestroy()
   }
 }

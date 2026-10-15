@@ -31,5 +31,9 @@ class VaultFile {
   /// This ensures files display in exact same order as source folder
   @Index()
   int sortOrder = 0;
-}
 
+  /// Encryption format version stored on disk.
+  /// 0 = legacy AES-256-CTR (no header; IV in DB as ivBase64)
+  /// 1 = versioned chunked AES-256-GCM (LVCRYPT1 header in blob)
+  int formatVersion = 0;
+}

@@ -27,33 +27,38 @@ const VaultFileSchema = CollectionSchema(
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
-    r'ivBase64': PropertySchema(
+    r'formatVersion': PropertySchema(
       id: 2,
+      name: r'formatVersion',
+      type: IsarType.long,
+    ),
+    r'ivBase64': PropertySchema(
+      id: 3,
       name: r'ivBase64',
       type: IsarType.string,
     ),
     r'mimeType': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'mimeType',
       type: IsarType.string,
     ),
     r'originalName': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'originalName',
       type: IsarType.string,
     ),
     r'parentFolderId': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'parentFolderId',
       type: IsarType.long,
     ),
     r'sortOrder': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'sortOrder',
       type: IsarType.long,
     ),
     r'storedBlobName': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'storedBlobName',
       type: IsarType.string,
     )
@@ -125,12 +130,13 @@ void _vaultFileSerialize(
 ) {
   writer.writeLong(offsets[0], object.byteSize);
   writer.writeDateTime(offsets[1], object.createdAt);
-  writer.writeString(offsets[2], object.ivBase64);
-  writer.writeString(offsets[3], object.mimeType);
-  writer.writeString(offsets[4], object.originalName);
-  writer.writeLong(offsets[5], object.parentFolderId);
-  writer.writeLong(offsets[6], object.sortOrder);
-  writer.writeString(offsets[7], object.storedBlobName);
+  writer.writeLong(offsets[2], object.formatVersion);
+  writer.writeString(offsets[3], object.ivBase64);
+  writer.writeString(offsets[4], object.mimeType);
+  writer.writeString(offsets[5], object.originalName);
+  writer.writeLong(offsets[6], object.parentFolderId);
+  writer.writeLong(offsets[7], object.sortOrder);
+  writer.writeString(offsets[8], object.storedBlobName);
 }
 
 VaultFile _vaultFileDeserialize(
@@ -142,13 +148,14 @@ VaultFile _vaultFileDeserialize(
   final object = VaultFile();
   object.byteSize = reader.readLong(offsets[0]);
   object.createdAt = reader.readDateTime(offsets[1]);
+  object.formatVersion = reader.readLong(offsets[2]);
   object.id = id;
-  object.ivBase64 = reader.readString(offsets[2]);
-  object.mimeType = reader.readStringOrNull(offsets[3]);
-  object.originalName = reader.readString(offsets[4]);
-  object.parentFolderId = reader.readLongOrNull(offsets[5]);
-  object.sortOrder = reader.readLong(offsets[6]);
-  object.storedBlobName = reader.readString(offsets[7]);
+  object.ivBase64 = reader.readString(offsets[3]);
+  object.mimeType = reader.readStringOrNull(offsets[4]);
+  object.originalName = reader.readString(offsets[5]);
+  object.parentFolderId = reader.readLongOrNull(offsets[6]);
+  object.sortOrder = reader.readLong(offsets[7]);
+  object.storedBlobName = reader.readString(offsets[8]);
   return object;
 }
 
@@ -164,16 +171,18 @@ P _vaultFileDeserializeProp<P>(
     case 1:
       return (reader.readDateTime(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
-    case 3:
-      return (reader.readStringOrNull(offset)) as P;
-    case 4:
-      return (reader.readString(offset)) as P;
-    case 5:
-      return (reader.readLongOrNull(offset)) as P;
-    case 6:
       return (reader.readLong(offset)) as P;
+    case 3:
+      return (reader.readString(offset)) as P;
+    case 4:
+      return (reader.readStringOrNull(offset)) as P;
+    case 5:
+      return (reader.readString(offset)) as P;
+    case 6:
+      return (reader.readLongOrNull(offset)) as P;
     case 7:
+      return (reader.readLong(offset)) as P;
+    case 8:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -588,6 +597,62 @@ extension VaultFileQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'createdAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition>
+      formatVersionEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'formatVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition>
+      formatVersionGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'formatVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition>
+      formatVersionLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'formatVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterFilterCondition>
+      formatVersionBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'formatVersion',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -1359,6 +1424,18 @@ extension VaultFileQuerySortBy on QueryBuilder<VaultFile, VaultFile, QSortBy> {
     });
   }
 
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> sortByFormatVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'formatVersion', Sort.asc);
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> sortByFormatVersionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'formatVersion', Sort.desc);
+    });
+  }
+
   QueryBuilder<VaultFile, VaultFile, QAfterSortBy> sortByIvBase64() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'ivBase64', Sort.asc);
@@ -1455,6 +1532,18 @@ extension VaultFileQuerySortThenBy
   QueryBuilder<VaultFile, VaultFile, QAfterSortBy> thenByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> thenByFormatVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'formatVersion', Sort.asc);
+    });
+  }
+
+  QueryBuilder<VaultFile, VaultFile, QAfterSortBy> thenByFormatVersionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'formatVersion', Sort.desc);
     });
   }
 
@@ -1557,6 +1646,12 @@ extension VaultFileQueryWhereDistinct
     });
   }
 
+  QueryBuilder<VaultFile, VaultFile, QDistinct> distinctByFormatVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'formatVersion');
+    });
+  }
+
   QueryBuilder<VaultFile, VaultFile, QDistinct> distinctByIvBase64(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1616,6 +1711,12 @@ extension VaultFileQueryProperty
   QueryBuilder<VaultFile, DateTime, QQueryOperations> createdAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'createdAt');
+    });
+  }
+
+  QueryBuilder<VaultFile, int, QQueryOperations> formatVersionProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'formatVersion');
     });
   }
 

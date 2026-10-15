@@ -10,7 +10,7 @@ import '../models/operation_job_item.dart';
 import '../platform/android/android_thermal_monitor.dart';
 import '../services/archive_reader.dart';
 import '../services/blob_store.dart';
-import '../services/dart_crypto_engine.dart';
+import '../services/crypto_engine.dart';
 import '../services/job_repository.dart';
 import '../services/secure_storage_service.dart';
 import '../services/vault_repository.dart';
@@ -64,7 +64,7 @@ class ImportCoordinator {
   final VaultRepository repo;
   final JobRepository jobRepo;
   final BlobStore blobStore;
-  final DartCryptoEngine crypto;
+  final CryptoEngine crypto;
   final SecureStorageService storage;
   final AndroidThermalMonitor? thermalMonitor;
 
@@ -301,6 +301,7 @@ class ImportCoordinator {
             blobId: blobId,
             ivBase64: encryptResult.ivBase64,
             byteSize: encryptResult.byteSize,
+            formatVersion: encryptResult.formatVersion,
           );
 
           await jobRepo.markJobItemState(item.id, JobItemState.completed);

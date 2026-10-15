@@ -184,6 +184,8 @@ class VaultRepository {
     required String ivBase64,
     required int byteSize,
     String? mimeType,
+    int formatVersion =
+        0, // new optional param — defaults to 0 for backward compat
   }) async {
     // Derive the stored blob name: JobRunner writes '<blobId>.bin'.
     final storedBlobName = '$blobId.bin';
@@ -197,6 +199,7 @@ class VaultRepository {
       ..byteSize = byteSize
       ..mimeType = mimeType
       ..ivBase64 = ivBase64
+      ..formatVersion = formatVersion
       ..createdAt = DateTime.now()
       ..sortOrder = maxSortOrder + 1;
 
