@@ -85,8 +85,11 @@ class ArchiveReader {
     String zipPath, {
     required int maxEntryBytes,
   }) async* {
-    final inputStream = InputFileStream(zipPath);
+    // Declare nullable so the finally block can guard against a constructor
+    // throw on a missing/unreadable file (CRASH-006).
+    InputFileStream? inputStream;
     try {
+      inputStream = InputFileStream(zipPath);
       final archive = ZipDecoder().decodeBuffer(inputStream);
 
       for (final entry in archive.files) {
@@ -112,6 +115,8 @@ class ArchiveReader {
         }
 
         final tempPath = await _createTempPath(entry.name);
+        final entryName = entry.name;
+        final entrySize = entry.size;
 
         final outStream = OutputFileStream(tempPath);
         try {
@@ -120,17 +125,20 @@ class ArchiveReader {
           outStream.closeSync();
         }
 
-        yield ArchiveEntry(
-          name: entry.name,
-          tempPath: tempPath,
-          sizeBytes: entry.size,
-        );
-
-        // Free entry memory immediately after yielding.
+        // Free entry memory BEFORE yielding — the caller may await a long
+        // async operation (encryption) before iterating, and holding the
+        // decompressed bytes until then wastes peak heap (PERF-004).
         entry.clear();
+
+        yield ArchiveEntry(
+          name: entryName,
+          tempPath: tempPath,
+          sizeBytes: entrySize,
+        );
       }
     } finally {
-      inputStream.closeSync();
+      // Guard: inputStream may be null if the constructor threw (CRASH-006).
+      inputStream?.closeSync();
     }
   }
 

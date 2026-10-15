@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
+import '../app/auth_session.dart';
 import '../models/operation_job.dart';
 import '../models/operation_job_item.dart';
 import '../platform/android/android_thermal_monitor.dart';
@@ -129,6 +130,9 @@ class ImportCoordinator {
     // folderCache maps relative dir path → vault folder id
     final folderCache = <String, int>{'': rootFolder.id};
 
+    // Build all items first, then batch-insert in a single transaction
+    // to avoid N individual write transactions for large folder imports (PERF-003).
+    final jobItems = <OperationJobItem>[];
     for (final fileInfo in allFiles) {
       final relDir = path.dirname(fileInfo.relativePath);
       final leafFolderId = (relDir == '.' || relDir == '')
@@ -143,13 +147,16 @@ class ImportCoordinator {
         ..partialBlobPath = null
         ..sourceSizeBytes = fileInfo.file.lengthSync()
         ..parentFolderId = leafFolderId;
-      await jobRepo.createJobItem(item);
+      jobItems.add(item);
     }
+    await jobRepo.createJobItems(jobItems);
 
     // ------------------------------------------------------------------ //
     // 5. Delegate to JobRunner
     // ------------------------------------------------------------------ //
-    final masterKey = await storage.getOrCreateMasterKey32();
+    // Prefer the in-memory DEK from the active session (OPT-001/CRASH-005).
+    final masterKey =
+        AuthSession.current?.dek ?? await storage.getOrCreateMasterKey32();
     final runner = JobRunner(
       blobStore: blobStore,
       crypto: crypto,
@@ -214,7 +221,9 @@ class ImportCoordinator {
     await jobRepo.createJob(job);
     await jobRepo.markJobState(job.id, JobState.running);
 
-    final masterKey = await storage.getOrCreateMasterKey32();
+    // Prefer the in-memory DEK from the active session (OPT-001/CRASH-005).
+    final masterKey =
+        AuthSession.current?.dek ?? await storage.getOrCreateMasterKey32();
     final reader = ArchiveReader();
 
     var completedFiles = 0;
@@ -404,7 +413,9 @@ class ImportCoordinator {
     }
 
     // Delegate to JobRunner.
-    final masterKey = await storage.getOrCreateMasterKey32();
+    // Prefer the in-memory DEK from the active session (OPT-001/CRASH-005).
+    final masterKey =
+        AuthSession.current?.dek ?? await storage.getOrCreateMasterKey32();
     final runner = JobRunner(
       blobStore: blobStore,
       crypto: crypto,

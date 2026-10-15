@@ -28,8 +28,13 @@ class _VaultAppState extends State<VaultApp> with WidgetsBindingObserver {
 
     // Crash recovery: check for interrupted jobs after the first frame so the
     // navigator context is ready.
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _checkInterruptedJobs());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _checkInterruptedJobs();
+      } catch (e) {
+        debugPrint('[App] Crash recovery check failed: $e');
+      }
+    });
   }
 
   @override

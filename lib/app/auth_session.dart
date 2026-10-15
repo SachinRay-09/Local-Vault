@@ -79,11 +79,63 @@ class AuthSession with WidgetsBindingObserver {
     }
 
     final iters = await repo.loadIterations() ?? 120000;
-    const outLen = 32;
 
+    // If an envelope is present, we can skip the hash-based KDF verification
+    // and rely solely on GCM tag authentication during DEK unwrap — this saves
+    // one full PBKDF2 run (~120k iterations) on unlock (OPT-003).
+    if (await repo.hasEnvelope()) {
+      // ── Phase 5+ path: derive KEK, unwrap DEK from envelope ──
+      final envelope = await repo.loadEnvelope();
+      if (envelope == null) {
+        // Envelope present but unparseable — fall back to legacy + hash check.
+        debugPrint(
+            '[AuthSession] Envelope unreadable; falling back to legacy.');
+        return _legacyUnlockWithHashCheck(
+            password, saltBytes, storedHash, iters, repo, storage);
+      }
+
+      final kek = await DartCryptoEngine.deriveKek(
+          password, envelope.saltBytes, envelope.iterations);
+      // unwrapDek throws AuthenticationFailure on tag mismatch (wrong password).
+      final Uint8List dek;
+      try {
+        dek = DartCryptoEngine.unwrapDek(envelope.wrappedDekBytes,
+            envelope.tagBytes, envelope.nonceBytes, kek);
+      } on AuthenticationFailure {
+        kek.fillRange(0, kek.length, 0);
+        // GCM auth failure = wrong password.
+        await storage.recordAuthAttempt(false);
+        throw ArgumentError('Incorrect password.');
+      } finally {
+        kek.fillRange(0, kek.length, 0);
+      }
+
+      await storage.recordAuthAttempt(true);
+      // Tear down any previous session before replacing it.
+      current?.lock();
+      final session = AuthSession._(dek);
+      current = session;
+      WidgetsBinding.instance.addObserver(session);
+      return session;
+    }
+
+    // No envelope — run PBKDF2 hash check + legacy path.
+    return _legacyUnlockWithHashCheck(
+        password, saltBytes, storedHash, iters, repo, storage);
+  }
+
+  /// Hash-check path used when no envelope exists (first login or corrupted envelope).
+  static Future<AuthSession> _legacyUnlockWithHashCheck(
+    String password,
+    Uint8List saltBytes,
+    String storedHash,
+    int iters,
+    CredentialRepository repo,
+    SecureStorageService storage,
+  ) async {
     // Run KDF in a background isolate so the UI thread stays responsive.
     final derived = await Isolate.run(
-      () => _pbkdf2Worker((password, saltBytes, iters, outLen)),
+      () => _pbkdf2Worker((password, saltBytes, iters, 32)),
     );
 
     final ok = await repo.verifyHash(derived, storedHash);
@@ -98,41 +150,7 @@ class AuthSession with WidgetsBindingObserver {
     // Tear down any previous session before replacing it.
     current?.lock();
 
-    if (await repo.hasEnvelope()) {
-      // ── Phase 5+ path: derive KEK, unwrap DEK from envelope ──
-      final envelope = await repo.loadEnvelope();
-      if (envelope == null) {
-        // Envelope present but unparseable — defensive fallback to legacy path.
-        debugPrint(
-            '[AuthSession] Envelope unreadable; falling back to legacy.');
-        return _legacyUnlock(password, repo, storage);
-      }
-
-      final kek = await DartCryptoEngine.deriveKek(
-          password, envelope.saltBytes, envelope.iterations);
-      // unwrapDek throws AuthenticationFailure on tag mismatch.
-      final Uint8List dek;
-      try {
-        dek = DartCryptoEngine.unwrapDek(envelope.wrappedDekBytes,
-            envelope.tagBytes, envelope.nonceBytes, kek);
-      } on AuthenticationFailure {
-        // Password was verified via PBKDF2 hash above, so GCM failure here
-        // means a corrupted envelope rather than a wrong password.  Fall back
-        // gracefully.
-        kek.fillRange(0, kek.length, 0);
-        debugPrint('[AuthSession] DEK unwrap failed; falling back to legacy.');
-        return _legacyUnlock(password, repo, storage);
-      } finally {
-        kek.fillRange(0, kek.length, 0);
-      }
-
-      final session = AuthSession._(dek);
-      current = session;
-      WidgetsBinding.instance.addObserver(session);
-      return session;
-    } else {
-      return _legacyUnlock(password, repo, storage);
-    }
+    return _legacyUnlock(password, repo, storage);
   }
 
   /// Legacy path: loads master key from secure storage, then silently migrates
@@ -335,6 +353,16 @@ class AuthSession with WidgetsBindingObserver {
     // 8. Success.
     newKek.fillRange(0, newKek.length, 0);
     await repo.deleteRollbackMarker();
+
+    // Zero dek2 (verification copy) — it's always a distinct allocation from
+    // unwrapDek or the dek2 comparison copy.
+    dek2.fillRange(0, dek2.length, 0);
+    // Zero dek only if it came from unwrapDek (envelope path). When it came
+    // from loadMasterKey (legacy path), dek IS the stored masterKey and zeroing
+    // it would corrupt other holders of that reference (CRASH-004).
+    if (oldEnvelope != null) {
+      dek.fillRange(0, dek.length, 0);
+    }
 
     // Update the password hash so login verification still works.
     await storage.setPassword(newPassword);

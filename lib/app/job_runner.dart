@@ -159,6 +159,11 @@ class JobRunner {
           currentFile: item.sourcePath,
         );
       } catch (e) {
+        // Delete any partial blob before marking failed to prevent orphan
+        // accumulation that triggers crash-recovery on next launch (CRASH-007).
+        try {
+          await blobStore.deleteBlobIfExists(item.blobId);
+        } catch (_) {}
         await jobRepo.markJobItemState(
           item.id,
           JobItemState.failed,

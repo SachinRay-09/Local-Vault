@@ -162,9 +162,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
       debugPrint('DEBUG: Refresh completed successfully');
-
-      // Only clear image cache after successful data load, not before
-      PaintingBinding.instance.imageCache.clear();
     } catch (e) {
       debugPrint('DEBUG: Error during refresh: $e');
       if (mounted) {
@@ -196,9 +193,6 @@ class _HomeScreenState extends State<HomeScreen> {
           moreFiles.length >= _pageSize && _files.length < _totalFileCount;
       _loadingMore = false;
     });
-
-    // Only clear image cache, not data
-    PaintingBinding.instance.imageCache.clear();
   }
 
   Widget _breadcrumbs() {

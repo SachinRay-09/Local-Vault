@@ -1,6 +1,4 @@
-// Real FVP implementation for Windows
-import 'package:fvp/fvp.dart' as fvp;
-
+// Stub for non-Windows platforms
 void registerFvp() {
-  fvp.registerWith();
+  // No-op - FVP removed, will be re-implemented for Windows when needed
 }

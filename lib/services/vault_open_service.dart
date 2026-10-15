@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../app/auth_session.dart';
 import '../models/vault_file.dart';
 import 'crypto_engine.dart';
 import 'dart_crypto_engine.dart';
@@ -30,7 +31,10 @@ class VaultOpenService {
   final CryptoEngine _cryptoEngine;
 
   Future<File> decryptToCachedTempFile(VaultFile file) async {
-    final masterKey32 = await secureStorage.getOrCreateMasterKey32();
+    // Prefer the in-memory DEK from the active session — avoids a round-trip
+    // to EncryptedSharedPreferences on every file open (OPT-001).
+    final masterKey32 = AuthSession.current?.dek ??
+        await secureStorage.getOrCreateMasterKey32();
 
     final dir = await VaultPaths.ensureTempDir();
     await _bestEffortCleanup(dir);
@@ -56,7 +60,9 @@ class VaultOpenService {
 
   /// Decrypt a file to a specific path (used by Android manga service)
   Future<void> decryptToSpecificPath(VaultFile file, String outputPath) async {
-    final masterKey32 = await secureStorage.getOrCreateMasterKey32();
+    // Prefer the in-memory DEK from the active session (OPT-001).
+    final masterKey32 = AuthSession.current?.dek ??
+        await secureStorage.getOrCreateMasterKey32();
     final outputFile = File(outputPath);
 
     // Ensure output directory exists
@@ -99,15 +105,15 @@ class VaultOpenService {
 
   static Future<void> _bestEffortCleanup(Directory dir) async {
     // Keep it lightweight: delete temp files older than 24h.
+    // Use async list/stat to avoid blocking the UI isolate (CRASH-003/PERF-001).
     final cutoff = DateTime.now().subtract(const Duration(hours: 24));
     try {
-      final entries = dir.listSync();
-      for (final e in entries) {
+      await for (final e in dir.list()) {
         if (e is File) {
-          final stat = e.statSync();
+          final stat = await e.stat();
           if (stat.modified.isBefore(cutoff)) {
             try {
-              e.deleteSync();
+              await e.delete();
             } catch (_) {}
           }
         }

@@ -157,12 +157,12 @@ class DartCryptoEngine implements CryptoEngine {
   }
 
   // -------------------------------------------------------------------------
-  // v1 Encrypt
+  // v1 Encrypt (static synchronous — called from Isolate.run)
   // -------------------------------------------------------------------------
-  Future<EncryptResult> _encryptFileV1(
-      String sourcePath, String destPath, Uint8List key) async {
+  static EncryptResult _encryptFileV1Sync(
+      String sourcePath, String destPath, Uint8List key) {
     final sourceFile = File(sourcePath);
-    final originalSize = await sourceFile.length();
+    final originalSize = sourceFile.lengthSync();
 
     final fileId = _randomBytes(16);
     final baseNonce = _randomBytes(12);
@@ -170,11 +170,11 @@ class DartCryptoEngine implements CryptoEngine {
     final header60 = _buildHeader(originalSize, fileId, baseNonce);
     final headerTag = _computeHeaderTag(key, baseNonce, header60);
 
-    final out = File(destPath).openWrite();
+    final outSync = File(destPath).openSync(mode: FileMode.write);
     try {
       // Write 60-byte header + 16-byte header auth tag
-      out.add(header60);
-      out.add(headerTag);
+      outSync.writeFromSync(header60);
+      outSync.writeFromSync(headerTag);
 
       final raf = sourceFile.openSync();
       try {
@@ -185,16 +185,14 @@ class DartCryptoEngine implements CryptoEngine {
           final nonce = _chunkNonce(baseNonce, chunkIndex);
           // AAD for data chunks is empty
           final cipherAndTag = _gcmEncrypt(key, nonce, Uint8List(0), chunk);
-          out.add(cipherAndTag);
+          outSync.writeFromSync(cipherAndTag);
           chunkIndex++;
         }
       } finally {
         raf.closeSync();
       }
-
-      await out.flush();
     } finally {
-      await out.close();
+      outSync.closeSync();
     }
 
     return EncryptResult(
@@ -205,10 +203,10 @@ class DartCryptoEngine implements CryptoEngine {
   }
 
   // -------------------------------------------------------------------------
-  // v1 Decrypt
+  // v1 Decrypt (static synchronous — called from Isolate.run)
   // -------------------------------------------------------------------------
-  Future<void> _decryptFileV1(
-      String sourcePath, String destPath, Uint8List key) async {
+  static void _decryptFileV1Sync(
+      String sourcePath, String destPath, Uint8List key) {
     final raf = File(sourcePath).openSync();
     try {
       // Read 60-byte header
@@ -250,7 +248,7 @@ class DartCryptoEngine implements CryptoEngine {
           errorContext: 'Header auth tag mismatch');
 
       // Decrypt data chunks
-      final out = File(destPath).openWrite();
+      final outSync = File(destPath).openSync(mode: FileMode.write);
       try {
         var chunkIndex = 0;
         var totalDecrypted = 0;
@@ -269,12 +267,10 @@ class DartCryptoEngine implements CryptoEngine {
           final plain = _gcmDecrypt(key, nonce, Uint8List(0), inBuf,
               errorContext: 'Chunk $chunkIndex auth tag mismatch');
 
-          out.add(plain);
+          outSync.writeFromSync(plain);
           totalDecrypted += plain.length;
           chunkIndex++;
         }
-
-        await out.flush();
 
         // Sanity check: decoded bytes must equal declared original size
         if (totalDecrypted != originalSize) {
@@ -282,7 +278,7 @@ class DartCryptoEngine implements CryptoEngine {
               'Decrypted size mismatch: got $totalDecrypted, expected $originalSize');
         }
       } finally {
-        await out.close();
+        outSync.closeSync();
       }
     } finally {
       raf.closeSync();
@@ -299,38 +295,50 @@ class DartCryptoEngine implements CryptoEngine {
     required String destPath,
     required Uint8List key,
     EncryptionOptions options = const EncryptionOptions(),
-  }) async {
+  }) {
     if (key.length != 32) {
       throw ArgumentError('key must be 32 bytes for AES-256.');
     }
+    // Run in a background isolate to avoid blocking the UI thread (CRASH-002).
+    // File paths and key are cheap to copy across isolate boundaries.
+    return Isolate.run(
+      () => _encryptFileSync(sourcePath, destPath, key, options),
+    );
+  }
 
+  /// Synchronous implementation — called from inside [Isolate.run].
+  static EncryptResult _encryptFileSync(
+    String sourcePath,
+    String destPath,
+    Uint8List key,
+    EncryptionOptions options,
+  ) {
     if (options.formatVersion == 1) {
-      return _encryptFileV1(sourcePath, destPath, key);
+      return _encryptFileV1Sync(sourcePath, destPath, key);
     }
 
     // ---- v0: legacy AES-256-CTR path (UNCHANGED) ----
     final sourceFile = File(sourcePath);
-    final clearSize = await sourceFile.length();
+    final clearSize = sourceFile.lengthSync();
 
     final ivBytes = _randomBytes(16);
     final cipher = SICStreamCipher(AESEngine())
       ..init(true, ParametersWithIV(KeyParameter(key), ivBytes));
 
-    final out = File(destPath).openWrite();
+    final outSync = File(destPath).openSync(mode: FileMode.write);
     try {
       final raf = sourceFile.openSync();
       try {
         while (true) {
           final chunk = raf.readSync(_v0ChunkSize);
           if (chunk.isEmpty) break;
-          out.add(cipher.process(chunk));
+          outSync.writeFromSync(cipher.process(chunk));
         }
       } finally {
         raf.closeSync();
       }
-      await out.flush();
     } finally {
-      await out.close();
+      outSync.closeSync();
     }
 
     return EncryptResult(
@@ -346,40 +354,57 @@ class DartCryptoEngine implements CryptoEngine {
     required String destPath,
     required Uint8List key,
     required String ivBase64,
-  }) async {
+  }) {
     if (key.length != 32) {
       throw ArgumentError('key must be 32 bytes for AES-256.');
     }
+    // Run in a background isolate to avoid blocking the UI thread (CRASH-002).
+    return Isolate.run(
+      () => _decryptFileSync(sourcePath, destPath, key, ivBase64),
+    );
+  }
 
-    // Auto-detect format: read first 8 bytes
+  /// Synchronous implementation — called from inside [Isolate.run].
+  static void _decryptFileSync(
+    String sourcePath,
+    String destPath,
+    Uint8List key,
+    String ivBase64,
+  ) {
+    // Auto-detect format: read first 8 bytes.
+    // Keep the file handle open and seek back for v0 to avoid opening twice
+    // (BROKEN-006 — double-open is fragile on Android SAF URIs).
     final raf = File(sourcePath).openSync();
-    final probe = raf.readSync(8);
-    raf.closeSync();
-
-    if (probe.length == 8 && String.fromCharCodes(probe) == 'LVCRYPT1') {
-      return _decryptFileV1(sourcePath, destPath, key);
-    }
-
-    // ---- v0: legacy AES-256-CTR path (UNCHANGED) ----
-    final ivBytes = base64Decode(ivBase64);
-    final cipher = SICStreamCipher(AESEngine())
-      ..init(false, ParametersWithIV(KeyParameter(key), ivBytes));
-
-    final out = File(destPath).openWrite();
     try {
-      final rafDecrypt = File(sourcePath).openSync();
+      final probe = raf.readSync(8);
+
+      if (probe.length == 8 && String.fromCharCodes(probe) == 'LVCRYPT1') {
+        raf.closeSync(); // v1: _decryptFileV1Sync opens its own handle
+        _decryptFileV1Sync(sourcePath, destPath, key);
+        return;
+      }
+
+      // ---- v0: legacy AES-256-CTR path — reuse raf, seek to 0 ----
+      raf.setPositionSync(0);
+      final ivBytes = base64Decode(ivBase64);
+      final cipher = SICStreamCipher(AESEngine())
+        ..init(false, ParametersWithIV(KeyParameter(key), ivBytes));
+
+      final outSync = File(destPath).openSync(mode: FileMode.write);
       try {
         while (true) {
-          final chunk = rafDecrypt.readSync(_v0ChunkSize);
+          final chunk = raf.readSync(_v0ChunkSize);
           if (chunk.isEmpty) break;
-          out.add(cipher.process(chunk));
+          outSync.writeFromSync(cipher.process(chunk));
         }
       } finally {
-        rafDecrypt.closeSync();
+        outSync.closeSync();
       }
-      await out.flush();
     } finally {
-      await out.close();
+      // Close raf only if it wasn't already closed by the v1 path.
+      try {
+        raf.closeSync();
+      } catch (_) {}
     }
   }
 

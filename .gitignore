@@ -43,9 +43,23 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/.gradle/
+/android/build/
+/android/app/build/
 
 # Windows build artifacts
 /windows/flutter/ephemeral/
+/windows/build/
+
+# Build outputs - DO NOT COMMIT LARGE FILES
+*.apk
+*.aab
+*.exe
+*.msi
+*.dmg
+*.zip
+*.tar.gz
+*.ipa
 
 # Local configuration files
 android/local.properties
@@ -66,3 +80,47 @@ tmp/
 # IDE files
 .vscode/settings.json
 .vscode/launch.json
+
+# Large files and dependencies
+*.so
+*.dll
+*.dylib
+pubspec.lock
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# Coverage
+coverage/
+*.lcov
+
+# Test artifacts
+test/.test_coverage.dart
+test_driver/
+
+# Documentation build artifacts
+doc/api/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+SELLING_STRATEGY.md

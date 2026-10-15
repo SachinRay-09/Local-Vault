@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:isar/isar.dart';
 import 'package:path/path.dart' as path;
 
+import '../app/auth_session.dart';
 import '../db/isar_db.dart';
 import '../models/operation_job.dart';
 import '../models/vault_file.dart';
@@ -143,7 +144,10 @@ class ExportCoordinator {
     // ------------------------------------------------------------------ //
     // 5. Open archive, process files one at a time
     // ------------------------------------------------------------------ //
-    final masterKey = await storage.getOrCreateMasterKey32();
+    // Prefer the in-memory DEK from the active session to avoid repeated
+    // EncryptedSharedPreferences reads (OPT-001 / CRASH-005).
+    final masterKey =
+        AuthSession.current?.dek ?? await storage.getOrCreateMasterKey32();
     final writer = ArchiveWriter(destinationZipPath);
     await writer.open();
 
@@ -237,13 +241,14 @@ class ExportCoordinator {
     Isar isar,
     Set<int> ids,
   ) async {
-    final files = <VaultFile>[];
-    for (final id in ids) {
-      final folderFiles =
-          await isar.vaultFiles.filter().parentFolderIdEqualTo(id).findAll();
-      files.addAll(folderFiles);
+    if (ids.isEmpty) return [];
+    // Use a single OR-chained query instead of N individual queries (PERF-008).
+    final idList = ids.toList();
+    var q = isar.vaultFiles.filter().parentFolderIdEqualTo(idList.first);
+    for (final id in idList.skip(1)) {
+      q = q.or().parentFolderIdEqualTo(id);
     }
-    return files;
+    return q.findAll();
   }
 
   static Future<Map<int, VaultFolder>> _loadFolderMap(

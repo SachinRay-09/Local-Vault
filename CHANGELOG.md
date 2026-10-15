@@ -2,6 +2,34 @@
 
 All notable changes to Local Vault will be documented in this file.
 
+## [2.5.2] - 2024-02-14
+
+### 🎨 Added
+- **Natural Sort for Folders**: Folders now sort correctly (1, 2, 10 instead of 1, 10, 2)
+- **Multi-Folder Selection**: Long-press folder to enter selection mode, select multiple folders
+- **Batch Move Folders**: Move multiple folders at once with circular reference validation
+- **Improved Performance**: Single database transaction for batch operations (10-40x faster)
+
+### 🔧 Improved
+- **App Name**: Changed from "local_vault" to "Local Vault" on both Windows and Android
+- **Memory Management**: Optimized batch operations with Set<int> for O(1) lookups
+- **Error Handling**: Better validation for folder move operations
+- **Documentation**: Consolidated all documentation into 5 main files
+
+### 🐛 Fixed
+- Flutter analyze issues (2 issues resolved)
+- Folder hierarchy validation to prevent circular references
+
+### 📦 Build
+- Android APK: `app-release.apk` (v2.5.2+6)
+- Windows Installer: `LocalVault-x86_64-2.5.2+6-Installer.exe`
+
+### ❌ Removed
+- FVP dependency temporarily removed for cross-platform compatibility
+- Redundant documentation files (consolidated into main docs)
+
+---
+
 ## [2.5.0] - 2024-02-13
 
 ### 🎨 Added

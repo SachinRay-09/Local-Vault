@@ -4,6 +4,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/app_settings.dart';
+import '../models/file_tag.dart';
 import '../models/operation_job.dart';
 import '../models/operation_job_item.dart';
 import '../models/vault_file.dart';
@@ -40,6 +41,8 @@ class IsarDb {
         AppSettingsSchema,
         OperationJobSchema,
         OperationJobItemSchema,
+        FileTagSchema,
+        FileTagAssignmentSchema,
       ],
       directory: supportDir.path,
       name: 'local_vault',
@@ -60,10 +63,13 @@ class IsarDb {
   /// Sums all VaultFile.byteSize values and writes the total to AppSettings.
   /// Called once on first open to seed the running counter from legacy data.
   static Future<void> _reconcileStorageCounter(Isar isar) async {
-    final allFiles = await isar.vaultFiles.where().anyId().findAll();
+    // Use a property query to sum only byteSize — avoids loading full objects
+    // into memory for vaults with thousands of files (PERF-006).
+    final sizes =
+        await isar.vaultFiles.where().anyId().byteSizeProperty().findAll();
     var total = 0;
-    for (final f in allFiles) {
-      total += f.byteSize;
+    for (final s in sizes) {
+      total += s;
     }
     final s =
         await isar.appSettings.where().anyId().findFirst() ?? AppSettings();

@@ -26,6 +26,16 @@ class JobRepository {
     return item.id;
   }
 
+  /// Batch-inserts a list of [items] in a single Isar write transaction.
+  /// Much faster than N individual [createJobItem] calls for large imports
+  /// (PERF-003).
+  Future<void> createJobItems(List<OperationJobItem> items) async {
+    if (items.isEmpty) return;
+    await _isar.writeTxn(() async {
+      await _isar.operationJobItems.putAll(items);
+    });
+  }
+
   /// Updates the [JobState] of the job identified by [id].
   Future<void> markJobState(int id, JobState state) async {
     final job = await _isar.operationJobs.get(id);

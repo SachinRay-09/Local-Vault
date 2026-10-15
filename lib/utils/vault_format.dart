@@ -15,8 +15,19 @@ String? fileExtensionLower(String name) {
 }
 
 bool isImageFileName(String name) {
+  const exts = {
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'bmp',
+    'svg',
+    'avif',
+    'apng'
+  };
   final ext = fileExtensionLower(name);
-  return ext == 'jpg' || ext == 'jpeg' || ext == 'png' || ext == 'gif' || ext == 'webp';
+  return ext != null && exts.contains(ext);
 }
 
 bool isVideoFileName(String name) {
@@ -29,4 +40,3 @@ String formatLocalDateTime(DateTime dt) {
   String two(int n) => n.toString().padLeft(2, '0');
   return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
 }
-

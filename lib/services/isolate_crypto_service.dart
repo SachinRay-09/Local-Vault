@@ -3,49 +3,54 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 
 /// Background isolate processing for crypto operations to prevent UI blocking
+@Deprecated(
+    'Quarantined Phase 1 — placeholder service, do not use in production. Replacement: DartCryptoEngine.')
 class IsolateCryptoService {
   static const int _maxConcurrentIsolates = 2; // Limit concurrent isolates
   static int _activeIsolates = 0;
-  
+
   /// Process multiple files in background isolate to prevent UI blocking
   static Future<List<IsolateProcessResult>> processFilesInBackground({
     required List<IsolateProcessTask> tasks,
     Function(double)? onProgress,
   }) async {
+    assert(false,
+        'IsolateCryptoService is a placeholder — do not call in production');
     if (tasks.isEmpty) return [];
-    
+
     final results = <IsolateProcessResult>[];
     final batches = _createBatches(tasks, _maxConcurrentIsolates);
-    
+
     for (int batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       final batch = batches[batchIndex];
       final batchResults = await _processBatch(batch);
       results.addAll(batchResults);
-      
+
       // Update progress
       final progress = (batchIndex + 1) / batches.length;
       onProgress?.call(progress);
-      
+
       // Yield to UI thread between batches
       await Future.delayed(const Duration(milliseconds: 10));
     }
-    
+
     return results;
   }
-  
+
   /// Create batches for processing
   static List<List<IsolateProcessTask>> _createBatches(
-    List<IsolateProcessTask> tasks, 
+    List<IsolateProcessTask> tasks,
     int maxBatchSize,
   ) {
     final batches = <List<IsolateProcessTask>>[];
     for (int i = 0; i < tasks.length; i += maxBatchSize) {
-      final end = (i + maxBatchSize < tasks.length) ? i + maxBatchSize : tasks.length;
+      final end =
+          (i + maxBatchSize < tasks.length) ? i + maxBatchSize : tasks.length;
       batches.add(tasks.sublist(i, end));
     }
     return batches;
   }
-  
+
   /// Process a batch of tasks in parallel isolates
   static Future<List<IsolateProcessResult>> _processBatch(
     List<IsolateProcessTask> batch,
@@ -53,7 +58,7 @@ class IsolateCryptoService {
     final futures = batch.map((task) => _processTaskInIsolate(task)).toList();
     return await Future.wait(futures);
   }
-  
+
   /// Process single task in isolate
   static Future<IsolateProcessResult> _processTaskInIsolate(
     IsolateProcessTask task,
@@ -62,10 +67,10 @@ class IsolateCryptoService {
       // If too many isolates, process in current thread
       return _processTaskDirectly(task);
     }
-    
+
     try {
       _activeIsolates++;
-      
+
       final receivePort = ReceivePort();
       final isolate = await Isolate.spawn(
         _isolateEntryPoint,
@@ -74,10 +79,10 @@ class IsolateCryptoService {
           sendPort: receivePort.sendPort,
         ),
       );
-      
+
       final result = await receivePort.first as IsolateProcessResult;
       isolate.kill();
-      
+
       return result;
     } catch (e) {
       if (kDebugMode) {
@@ -88,7 +93,7 @@ class IsolateCryptoService {
       _activeIsolates--;
     }
   }
-  
+
   /// Isolate entry point
   static void _isolateEntryPoint(IsolateMessage message) {
     try {
@@ -102,7 +107,7 @@ class IsolateCryptoService {
       ));
     }
   }
-  
+
   /// Process task directly (fallback or for simple operations)
   static IsolateProcessResult _processTaskDirectly(IsolateProcessTask task) {
     try {
@@ -124,7 +129,7 @@ class IsolateCryptoService {
       );
     }
   }
-  
+
   /// Perform encryption operation
   static IsolateProcessResult _performEncryption(IsolateProcessTask task) {
     // Placeholder for encryption logic
@@ -135,7 +140,7 @@ class IsolateCryptoService {
       data: task.inputData, // Placeholder
     );
   }
-  
+
   /// Perform decryption operation
   static IsolateProcessResult _performDecryption(IsolateProcessTask task) {
     // Placeholder for decryption logic
@@ -145,7 +150,7 @@ class IsolateCryptoService {
       data: task.inputData, // Placeholder
     );
   }
-  
+
   /// Perform hashing operation
   static IsolateProcessResult _performHashing(IsolateProcessTask task) {
     // Placeholder for hashing logic
@@ -155,7 +160,7 @@ class IsolateCryptoService {
       data: Uint8List(32), // Placeholder hash
     );
   }
-  
+
   /// Perform compression operation
   static IsolateProcessResult _performCompression(IsolateProcessTask task) {
     // Placeholder for compression logic
@@ -181,7 +186,7 @@ class IsolateProcessTask {
   final IsolateOperation operation;
   final Uint8List inputData;
   final Map<String, dynamic> parameters;
-  
+
   IsolateProcessTask({
     required this.taskId,
     required this.operation,
@@ -196,7 +201,7 @@ class IsolateProcessResult {
   final bool success;
   final Uint8List? data;
   final String? error;
-  
+
   IsolateProcessResult({
     required this.taskId,
     required this.success,
@@ -209,7 +214,7 @@ class IsolateProcessResult {
 class IsolateMessage {
   final IsolateProcessTask task;
   final SendPort sendPort;
-  
+
   IsolateMessage({
     required this.task,
     required this.sendPort,
