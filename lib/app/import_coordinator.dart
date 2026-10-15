@@ -330,9 +330,93 @@ class ImportCoordinator {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
+  /// Imports a list of individual [filePaths] into the vault under
+  /// [parentFolderId].  Each file is grouped by the last directory component
+  /// of its path so that files from the same source folder are placed together.
+  ///
+  /// This is the mobile-compatible counterpart to [importFolder] — it accepts
+  /// individual file paths from a multi-file picker rather than a directory.
+  Stream<ImportProgress> importFileList(
+    List<String> filePaths,
+    int? parentFolderId, {
+    String folderName = 'Imported_Folder',
+    Function(String)? onStatus,
+  }) async* {
+    if (filePaths.isEmpty) return;
+
+    onStatus?.call('Preparing import…');
+
+    var totalBytes = 0;
+    final validPaths = <String>[];
+    for (final p in filePaths) {
+      final f = File(p);
+      if (f.existsSync()) {
+        totalBytes += f.lengthSync();
+        validPaths.add(p);
+      }
+    }
+
+    if (validPaths.isEmpty) {
+      throw ArgumentError('No accessible files in the provided list.');
+    }
+
+    // Create a root folder for this import.
+    onStatus?.call('Creating folder structure…');
+    final rootFolder = await repo.createFolder(
+      name: folderName,
+      parentId: parentFolderId,
+    );
+
+    // Create OperationJob.
+    final now = DateTime.now();
+    final job = OperationJob()
+      ..type = JobType.import
+      ..state = JobState.queued
+      ..totalItems = validPaths.length
+      ..completedItems = 0
+      ..totalBytes = totalBytes
+      ..processedBytes = 0
+      ..createdAt = now
+      ..sourceDescriptor = 'file-list:${validPaths.length}';
+    await jobRepo.createJob(job);
+
+    // Create job items.
+    for (final filePath in validPaths) {
+      final item = OperationJobItem()
+        ..jobId = job.id
+        ..state = JobItemState.pending
+        ..sourcePath = filePath
+        ..blobId = _randomBlobId()
+        ..partialBlobPath = null
+        ..sourceSizeBytes = File(filePath).lengthSync()
+        ..parentFolderId = rootFolder.id;
+      await jobRepo.createJobItem(item);
+    }
+
+    // Delegate to JobRunner.
+    final masterKey = await storage.getOrCreateMasterKey32();
+    final runner = JobRunner(
+      blobStore: blobStore,
+      crypto: crypto,
+      repo: repo,
+      jobRepo: jobRepo,
+      thermalMonitor: thermalMonitor,
+    );
+
+    await for (final progress in runner.run(job, masterKey)) {
+      onStatus?.call('Importing ${path.basename(progress.currentFile)}…');
+      yield ImportProgress(
+        completedFiles: progress.completedItems,
+        totalFiles: progress.totalItems,
+        processedBytes: progress.processedBytes,
+        totalBytes: progress.totalBytes,
+        currentFile: progress.currentFile,
+        jobId: job.id,
+      );
+    }
+
+    onStatus?.call('Import complete.');
+  }
 
   /// Enumerates supported files from [dir] recursively, sorted naturally.
   Future<List<_FileInfo>> _getAllFiles(

@@ -91,7 +91,15 @@ class AuthSession with WidgetsBindingObserver {
     // Tear down any previous session before replacing it.
     current?.lock();
 
-    final session = AuthSession._(derived);
+    // Store the actual master key (not the PBKDF2-derived key) so that
+    // Phase 5 migration can wrap it as the DEK.  The derived key was only
+    // needed to verify the password hash above.
+    final masterKeyBytes = await repo.loadMasterKey();
+    if (masterKeyBytes == null) {
+      throw StateError('No master key found in secure storage.');
+    }
+
+    final session = AuthSession._(masterKeyBytes);
     current = session;
     WidgetsBinding.instance.addObserver(session);
     return session;

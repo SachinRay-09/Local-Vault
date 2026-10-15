@@ -67,7 +67,7 @@ class _VaultAppState extends State<VaultApp> with WidgetsBindingObserver {
     final partialItems = <OperationJobItem>[];
 
     for (final job in interrupted) {
-      final items = await jobRepo.findPendingItems(job.id);
+      final items = await jobRepo.findPendingOrRunningItems(job.id);
       for (final item in items) {
         final partial = item.partialBlobPath;
         if (partial != null && File(partial).existsSync()) {

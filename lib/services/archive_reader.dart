@@ -92,9 +92,16 @@ class ArchiveReader {
       for (final entry in archive.files) {
         if (!entry.isFile) continue;
 
+        // Skip symbolic-link entries (mode bit 0xA000 = symlink in Unix tar).
+        // archive 3.x sets the high bits of `mode` to indicate file type.
+        final mode = entry.mode;
+        if ((mode & 0xF000) == 0xA000) {
+          yield ArchiveEntrySkipped(name: entry.name, reason: 'symbolic link');
+          continue;
+        }
+
         if (_isUnsafePath(entry.name)) {
-          yield ArchiveEntrySkipped(
-              name: entry.name, reason: 'unsafe path');
+          yield ArchiveEntrySkipped(name: entry.name, reason: 'unsafe path');
           continue;
         }
 
@@ -143,6 +150,13 @@ class ArchiveReader {
     for (final entry in archive.files) {
       if (!entry.isFile) continue;
 
+      // Skip symbolic-link entries.
+      final mode = entry.mode;
+      if ((mode & 0xF000) == 0xA000) {
+        yield ArchiveEntrySkipped(name: entry.name, reason: 'symbolic link');
+        continue;
+      }
+
       if (_isUnsafePath(entry.name)) {
         yield ArchiveEntrySkipped(name: entry.name, reason: 'unsafe path');
         continue;
@@ -178,8 +192,13 @@ class ArchiveReader {
   static bool _isUnsafePath(String name) {
     if (name.contains('..')) return true;
     if (name.startsWith('/')) return true;
-    // Windows absolute paths like C:\...
-    if (name.length > 2 && name[1] == ':') return true;
+    // Windows absolute paths like C:\... or C:/...
+    // Only flag if it looks like a drive letter followed by colon and separator.
+    if (name.length > 2 &&
+        name[1] == ':' &&
+        (name[2] == '\\' || name[2] == '/')) {
+      return true;
+    }
     return false;
   }
 
@@ -188,7 +207,8 @@ class ArchiveReader {
     final tmpDir = await getTemporaryDirectory();
     final stamp = DateTime.now().microsecondsSinceEpoch;
     final rand = Random.secure().nextInt(0xFFFFFF);
-    final base = p.basename(entryName)
+    final base = p
+        .basename(entryName)
         .replaceAll(RegExp(r'[^\w\-.]'), '_')
         .substring(0, p.basename(entryName).length.clamp(0, 64));
     return p.join(tmpDir.path, 'lv_zip_${stamp}_${rand}_$base');

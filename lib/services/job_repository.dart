@@ -74,6 +74,31 @@ class JobRepository {
         .findAll();
   }
 
+  /// Returns all [OperationJobItem] rows for [jobId] with state [pending] OR
+  /// [running] — used by crash-recovery to find items that were in-flight when
+  /// the app was killed.
+  Future<List<OperationJobItem>> findPendingOrRunningItems(int jobId) async {
+    return _isar.operationJobItems
+        .filter()
+        .jobIdEqualTo(jobId)
+        .stateEqualTo(JobItemState.pending)
+        .or()
+        .jobIdEqualTo(jobId)
+        .stateEqualTo(JobItemState.running)
+        .findAll();
+  }
+
+  /// Persists the [partialBlobPath] on the item identified by [id] so that
+  /// crash-recovery can locate and clean up the partial blob file.
+  Future<void> saveItemPartialPath(int id, String partialPath) async {
+    final item = await _isar.operationJobItems.get(id);
+    if (item == null) return;
+    item.partialBlobPath = partialPath;
+    await _isar.writeTxn(() async {
+      await _isar.operationJobItems.put(item);
+    });
+  }
+
   /// Deletes the job identified by [id] and all of its associated items.
   Future<void> deleteJob(int id) async {
     final itemIds = await _isar.operationJobItems

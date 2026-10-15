@@ -854,33 +854,35 @@ class _HomeScreenState extends State<HomeScreen> {
     final pw = password.trim();
 
     if (!mounted) return;
-    messenger.showSnackBar(const SnackBar(content: Text('Importing...')));
 
-    try {
-      final res = await _importExport.importFromZip(
+    // Use ImportCoordinator (streaming, memory-safe) instead of legacy
+    // importFromZip (readAsBytes — OOM risk on large ZIPs).
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ZipImportProgressDialog(
+        importCoordinator: _importCoordinator,
         zipPath: zipPath,
         password: pw,
         destinationFolderId: _currentFolderId,
-      );
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-            content: Text(
-                'Imported ${res.filesImported} files, ${res.foldersCreated} folders')),
-      );
-      await _refresh();
-    } catch (e) {
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-              'Import failed: $e\n\nTry extracting the ZIP first, then use Import Folder.'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    }
+        onComplete: () {
+          Navigator.pop(context);
+          _refresh();
+        },
+        onError: (error) {
+          Navigator.pop(context);
+          if (mounted) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Import failed: $error\n\nTry extracting the ZIP first, then use Import Folder.'),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        },
+      ),
+    );
   }
 
   void _openFolder(VaultFolder folder) {
@@ -3074,6 +3076,120 @@ class _ExportFolderZipProgressDialogState
                 ),
               ]
             : null,
+      ),
+    );
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// ZIP import via ImportCoordinator progress dialog (ISSUE-003 fix)
+// Replaces the legacy importFromZip (readAsBytes) path on desktop.
+// ---------------------------------------------------------------------------
+
+class _ZipImportProgressDialog extends StatefulWidget {
+  const _ZipImportProgressDialog({
+    required this.importCoordinator,
+    required this.zipPath,
+    required this.destinationFolderId,
+    required this.onComplete,
+    required this.onError,
+    this.password = '',
+  });
+
+  final ImportCoordinator importCoordinator;
+  final String zipPath;
+  final int? destinationFolderId;
+  final VoidCallback onComplete;
+  final void Function(String) onError;
+  final String password;
+
+  @override
+  State<_ZipImportProgressDialog> createState() =>
+      _ZipImportProgressDialogState();
+}
+
+class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
+  String _statusText = 'Opening ZIP...';
+  int _completedFiles = 0;
+  int _totalFiles = 0;
+  bool _isComplete = false;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _startImport();
+  }
+
+  Future<void> _startImport() async {
+    try {
+      await for (final progress in widget.importCoordinator.importZip(
+        widget.zipPath,
+        widget.destinationFolderId,
+        password: widget.password,
+        onStatus: (msg) {
+          if (mounted) setState(() => _statusText = msg);
+        },
+      )) {
+        if (!mounted) break;
+        setState(() {
+          _completedFiles = progress.completedFiles;
+          _totalFiles = progress.totalFiles;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _statusText = 'Import complete!';
+        });
+        widget.onComplete();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _errorText = e.toString();
+          _statusText = 'Import failed';
+        });
+        widget.onError(e.toString());
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Import Complete' : 'Importing ZIP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!_isComplete) const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_statusText),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorText!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ],
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: fraction),
+            const SizedBox(height: 4),
+            if (_totalFiles > 0)
+              Text('$_completedFiles / $_totalFiles files',
+                  style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          if (_isComplete)
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+        ],
       ),
     );
   }

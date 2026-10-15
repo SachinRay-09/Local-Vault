@@ -889,13 +889,29 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
       if (!mounted) return;
 
-      // Show progress dialog
+      // Show progress dialog — uses ImportCoordinator (ISSUE-011 fix).
+      // Build list of file paths from the picker result.
+      final filePaths = result.files
+          .where((f) => f.path != null)
+          .map((f) => f.path!)
+          .toList();
+
+      // Derive a folder name from the first file's parent directory.
+      String folderName = 'Imported_Folder';
+      if (filePaths.isNotEmpty) {
+        final parts = filePaths.first.split(Platform.pathSeparator);
+        if (parts.length > 1) {
+          folderName = parts[parts.length - 2];
+        }
+      }
+
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _EnhancedFolderImportDialog(
-          files: result.files,
-          enhancedRepo: _repo,
+        builder: (context) => _MobileFolderImportDialog(
+          importCoordinator: _importCoordinator,
+          filePaths: filePaths,
+          folderName: folderName,
           currentFolderId: _currentFolderId,
           onComplete: () {
             Navigator.pop(context);
@@ -2457,6 +2473,116 @@ class _MobileZipImportDialogState extends State<_MobileZipImportDialog> {
       canPop: _isComplete,
       child: AlertDialog(
         title: Text(_isComplete ? 'Import Complete' : 'Importing ZIP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!_isComplete) const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_statusText),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorText!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ],
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: fraction),
+            const SizedBox(height: 4),
+            if (_totalFiles > 0)
+              Text('$_completedFiles / $_totalFiles files',
+                  style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          if (_isComplete)
+            FilledButton(
+              onPressed: widget.onComplete,
+              child: const Text('Done'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Mobile folder import dialog using ImportCoordinator (ISSUE-011 fix)
+// ---------------------------------------------------------------------------
+
+class _MobileFolderImportDialog extends StatefulWidget {
+  const _MobileFolderImportDialog({
+    required this.importCoordinator,
+    required this.filePaths,
+    required this.folderName,
+    required this.currentFolderId,
+    required this.onComplete,
+  });
+
+  final ImportCoordinator importCoordinator;
+  final List<String> filePaths;
+  final String folderName;
+  final int? currentFolderId;
+  final VoidCallback onComplete;
+
+  @override
+  State<_MobileFolderImportDialog> createState() =>
+      _MobileFolderImportDialogState();
+}
+
+class _MobileFolderImportDialogState
+    extends State<_MobileFolderImportDialog> {
+  String _statusText = 'Starting import...';
+  int _completedFiles = 0;
+  int _totalFiles = 0;
+  bool _isComplete = false;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _startImport();
+  }
+
+  Future<void> _startImport() async {
+    try {
+      await for (final progress in widget.importCoordinator.importFileList(
+        widget.filePaths,
+        widget.currentFolderId,
+        folderName: widget.folderName,
+        onStatus: (msg) {
+          if (mounted) setState(() => _statusText = msg);
+        },
+      )) {
+        if (!mounted) break;
+        setState(() {
+          _completedFiles = progress.completedFiles;
+          _totalFiles = progress.totalFiles;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _statusText = 'Import complete!';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComplete = true;
+          _errorText = e.toString();
+          _statusText = 'Import failed';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    return PopScope(
+      canPop: _isComplete,
+      child: AlertDialog(
+        title: Text(_isComplete ? 'Import Complete' : 'Importing Files'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

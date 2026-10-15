@@ -117,6 +117,10 @@ class JobRunner {
       try {
         final partialPath = await blobStore.createPartialPath(item.blobId);
 
+        // Persist the partial path so crash-recovery can clean up the blob
+        // file if the process is killed between here and commitPartial.
+        await jobRepo.saveItemPartialPath(item.id, partialPath);
+
         final encryptResult = await crypto.encryptFile(
           sourcePath: item.sourcePath,
           destPath: partialPath,
