@@ -7,6 +7,7 @@ import 'crypto_engine.dart';
 import 'dart_crypto_engine.dart';
 import 'file_crypto_service.dart';
 import 'file_open_service.dart';
+import 'native_crypto_engine.dart';
 import 'secure_storage_service.dart';
 import 'vault_paths.dart';
 
@@ -16,7 +17,7 @@ class VaultOpenService {
     required this.secureStorage,
     required this.opener,
     CryptoEngine? cryptoEngine,
-  }) : _cryptoEngine = cryptoEngine ?? DartCryptoEngine();
+  }) : _cryptoEngine = cryptoEngine ?? NativeCryptoEngine();
 
   /// Legacy v0-only service — kept for API compatibility; actual decryption
   /// now goes through [_cryptoEngine] which auto-detects v0 vs v1 blobs.
@@ -25,9 +26,10 @@ class VaultOpenService {
   final FileOpenService opener;
 
   /// Handles both v0 (AES-256-CTR) and v1 (AES-256-GCM) blobs via
-  /// auto-detection. Defaults to [DartCryptoEngine] so existing callers that
-  /// don't pass a [cryptoEngine] are automatically upgraded to v1-aware
-  /// decryption.
+  /// auto-detection. Defaults to [NativeCryptoEngine] so v1 blobs decrypt via
+  /// BCrypt (Windows) or javax.crypto/BoringSSL/ARMv8-CE (Android) for
+  /// hardware acceleration. Falls back to [DartCryptoEngine] for v0 blobs
+  /// and on unsupported platforms.
   final CryptoEngine _cryptoEngine;
 
   Future<File> decryptToCachedTempFile(VaultFile file) async {

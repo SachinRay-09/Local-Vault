@@ -14,6 +14,7 @@ import '../models/vault_folder.dart';
 import 'crypto_engine.dart';
 import 'dart_crypto_engine.dart';
 import 'file_crypto_service.dart';
+import 'native_crypto_engine.dart';
 import 'secure_storage_service.dart';
 import 'vault_paths.dart';
 import 'vault_repository.dart';
@@ -38,7 +39,7 @@ class ImportExportService {
     required this.crypto,
     required this.secureStorage,
     CryptoEngine? cryptoEngine,
-  }) : _cryptoEngine = cryptoEngine ?? DartCryptoEngine();
+  }) : _cryptoEngine = cryptoEngine ?? NativeCryptoEngine();
 
   final VaultRepository repo;
 
@@ -48,7 +49,9 @@ class ImportExportService {
   final SecureStorageService secureStorage;
 
   /// Handles both v0 (AES-256-CTR) and v1 (AES-256-GCM) blobs via
-  /// auto-detection. Defaults to [DartCryptoEngine].
+  /// auto-detection. Defaults to [NativeCryptoEngine] so v1 blobs decrypt via
+  /// BCrypt (Windows) or javax.crypto/BoringSSL/ARMv8-CE (Android).
+  /// Falls back to [DartCryptoEngine] for v0 blobs automatically.
   final CryptoEngine _cryptoEngine;
 
   Future<String?> pickExportPath() {

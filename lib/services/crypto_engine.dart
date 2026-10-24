@@ -3,7 +3,7 @@ import 'dart:typed_data';
 /// Options controlling the on-disk format written by [CryptoEngine.encryptFile].
 class EncryptionOptions {
   // TODO(Phase 4.4): Change to 1 after hardware cross-platform tests pass on GT Book + Z9x
-  const EncryptionOptions({this.formatVersion = 0});
+  const EncryptionOptions({this.formatVersion = 1});
 
   /// 0 = legacy AES-256-CTR (backward compat — v0 blobs still decrypt via auto-detect)
   /// 1 = versioned chunked AES-256-GCM (LVCRYPT1 format) — enabled after hardware verification

@@ -12,7 +12,7 @@ import '../../models/vault_folder.dart';
 import '../../services/android_manga_service.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/blob_store.dart';
-import '../../services/dart_crypto_engine.dart';
+import '../../services/native_crypto_engine.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/job_repository.dart';
@@ -55,7 +55,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     repo: _repo,
     jobRepo: JobRepository(),
     blobStore: BlobStore(),
-    crypto: DartCryptoEngine(),
+    // Use NativeCryptoEngine so v1 blobs route to javax.crypto (Android)
+    // for hardware-accelerated AES-256-GCM via BoringSSL + ARMv8 CE.
+    // Falls back to DartCryptoEngine automatically for v0 blobs.
+    crypto: NativeCryptoEngine(),
     storage: SecureStorageService.instance,
   );
 

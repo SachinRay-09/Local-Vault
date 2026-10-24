@@ -525,6 +525,81 @@ git push origin v2.5.3
 
 ---
 
+## Image Viewer Architecture
+
+### Overview
+
+Both Windows (desktop) and Android (mobile) use `ImageViewerScreen` located at `lib/ui/viewers/image_viewer_screen.dart`. The old `OptimizedImageViewer` (`lib/ui/widgets/optimized_image_viewer.dart`) is no longer used as the primary viewer on any platform.
+
+### Why the old viewer crashed and flashed
+
+The old `OptimizedImageViewer` had three problems:
+
+1. **Black screen on Previous (Windows)** — it used `PageView.animateToPage()` with a 220ms slide animation. Flutter fires `onPageChanged` at the start of the animation, not the end. During the slide the `Scaffold(backgroundColor: Colors.black)` was visible through the viewport gap for the one raster frame before `Image.file` completed GPU upload.
+
+2. **OOM crash after ~200 images (Android)** — `AutomaticKeepAliveClientMixin` with `wantKeepAlive: true` prevented Flutter from ever evicting pages from memory. After ~200 images, 200 decoded bitmaps were pinned as "live images" in Flutter's codec cache, bypassing the 50 MB cap entirely.
+
+3. **Excessive decode size** — `ResizeImage` with `maxDimension * 2` decoded every image to up to 4800×4800 px (~88 MB per image). At screen-resolution sizes (~1080px wide) only ~10 MB is needed.
+
+### How the new viewer works
+
+**File:** `lib/ui/viewers/image_viewer_screen.dart`
+
+```
+_ImageViewerScreenState
+├── _resolved: Map<int, File>       ← only fully-ready Files live here
+├── _inFlight: Set<int>             ← tracks ongoing decrypts
+├── _currentIndex: int              ← changes only after target is ready
+└── _navigating: bool               ← prevents button spam
+```
+
+**Navigation flow (no black flash possible):**
+
+```
+User taps Next
+  ↓
+_navigateTo(targetIndex)
+  ↓
+await _decryptAndCache(targetIndex)
+  ├─ decryptToCachedTempFile()    ← file I/O (idempotent, fast on cache hit)
+  └─ precacheImage(FileImage)     ← pushes decoded bitmap to raster cache
+  ↓  (only after both complete)
+setState: _currentIndex = targetIndex
+  ↓
+AnimatedSwitcher detects key change
+  ↓
+180ms FadeTransition: old image → new image
+    (old image stays fully visible throughout — black Scaffold never exposed)
+```
+
+**Background preload window:**
+
+- On page change to index N: decrypts N-2 … N+2 in background (fire-and-forget).
+- Pages beyond ±5 from current: `imageCache.evict(FileImage(file))` + `file.deleteSync()`.
+- Peak RAM: at most 5 decoded images × ~10 MB = ~50 MB regardless of folder size.
+
+**Memory cap (set in `lib/main.dart`):**
+```dart
+PaintingBinding.instance.imageCache.maximumSize = 50;
+PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+```
+
+### What `OptimizedImageViewer` is now used for
+
+`lib/ui/widgets/optimized_image_viewer.dart` is kept in the codebase but is not opened from any navigation path. It has been fixed (OOM causes removed, eviction corrected, `ResizeImage` decode size reduced) in case it is needed in future. Do not add it back to any navigation path without verifying the black-flash regression is not reintroduced.
+
+### Key files
+
+| File | Role |
+|------|------|
+| `lib/ui/viewers/image_viewer_screen.dart` | Primary image viewer — used by both platforms |
+| `lib/ui/home/home_screen.dart` | Opens `ImageViewerScreen` on Windows (line ~904) |
+| `lib/ui/mobile/mobile_home_screen.dart` | Opens `ImageViewerScreen` on Android (line ~289) |
+| `lib/services/vault_open_service.dart` | `decryptToCachedTempFile` — idempotent, 24h temp cleanup |
+| `lib/ui/widgets/optimized_image_viewer.dart` | Legacy viewer — fixed but not used in navigation |
+
+---
+
 ## Resources
 
 ### Documentation

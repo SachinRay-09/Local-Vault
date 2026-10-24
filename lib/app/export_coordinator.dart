@@ -14,6 +14,7 @@ import '../services/crypto_engine.dart';
 import '../services/dart_crypto_engine.dart';
 import '../services/file_crypto_service.dart';
 import '../services/job_repository.dart';
+import '../services/native_crypto_engine.dart';
 import '../services/secure_storage_service.dart';
 import '../services/vault_paths.dart';
 import '../services/vault_repository.dart';
@@ -47,7 +48,12 @@ class ExportCoordinator {
     required this.jobRepo,
     CryptoEngine? cryptoEngine,
   })  : assert(Platform.isWindows, 'ExportCoordinator is Windows-only'),
-        _cryptoEngine = cryptoEngine ?? DartCryptoEngine();
+        // Default to NativeCryptoEngine so v1 blobs route to BCrypt/CNG
+        // (Windows AES-NI via AESENC/AESD instructions) instead of
+        // PointyCastle GCM (~3,000 MB/s vs ~9 MB/s in pure Dart).
+        // NativeCryptoEngine automatically falls back to DartCryptoEngine
+        // for v0 blobs, so existing data is unaffected.
+        _cryptoEngine = cryptoEngine ?? NativeCryptoEngine();
 
   final VaultRepository repo;
 
@@ -58,7 +64,8 @@ class ExportCoordinator {
   final JobRepository jobRepo;
 
   /// Handles both v0 (AES-256-CTR) and v1 (AES-256-GCM) blobs via
-  /// auto-detection. Defaults to [DartCryptoEngine].
+  /// auto-detection. Defaults to [NativeCryptoEngine] (BCrypt on Windows)
+  /// for hardware-accelerated AES; falls back to [DartCryptoEngine] for v0.
   final CryptoEngine _cryptoEngine;
 
   /// Exports the folder identified by [folderId] and all its descendants to

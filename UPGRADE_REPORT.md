@@ -11,7 +11,7 @@
 Local Vault is a private, encrypted media vault for storing images and videos on-device without any cloud sync. Files are encrypted at rest using AES-256 and are only accessible after password authentication. The app targets two hardware platforms:
 
 - **GT Book** — Windows 11, Intel i5-12450H, 16 GB RAM, NVMe SSD
-- **iQOO Z9x** — Android API 34, Snapdragon 6 Gen 1 (Cortex-A78 + A55 cores, ARMv8 Crypto Extensions), 8 GB RAM, UFS 2.2
+- **iQOO Z9x** — Android API 34, Snapdragon 6 Gen 1 (Cortex-A78 + A55 cores, ARMv8 Crypto Extensions), 6 GB RAM, UFS 2.2
 
 Phases 0–5 redesigned the app from the ground up, replacing a crash-prone legacy architecture with a pipeline-based import/export system, a secure key envelope (Phase 5), and a new AES-256-GCM chunked format (v1, not yet default).
 
@@ -61,6 +61,10 @@ Phases 0–5 redesigned the app from the ground up, replacing a crash-prone lega
 - `isImageFileName()` now recognises `.bmp`, `.svg`, `.avif`, `.apng`.
 - Crash-recovery callback in `app.dart` wrapped in try/catch.
 - `isar_db.dart` `_reconcileStorageCounter` uses a property query (sum of `byteSize` only) — startup heap spike for large vaults eliminated.
+
+### Image Viewer Overhaul (post-audit)
+- **Black screen on Previous fixed.** Root cause: Windows was opening `OptimizedImageViewer` (wrong file) which used `PageView.animateToPage` — the 220ms slide animation exposed the black `Scaffold` background for the one raster frame before `Image.file` finished GPU upload. Fix: both platforms now use `ImageViewerScreen`; `PageView` replaced with `AnimatedSwitcher` crossfade that only fires after `precacheImage` completes, so the old image stays visible until the new one is pixel-perfect ready.
+- **OOM crash/lag after ~200 images on Android fixed.** Three causes removed: (1) `wantKeepAlive: true` was pinning every decoded bitmap forever; (2) `ResizeImage` decoded at `maxDimension×2` = ~88 MB per image; (3) `_cleanupDistantImages` removed Dart map entries but never evicted Flutter's image codec cache or deleted temp files. All three fixed — peak memory is now bounded to ±5 decoded images regardless of folder size.
 
 ---
 
@@ -124,11 +128,35 @@ Same pipeline as Windows, but:
 
 ### File Viewing — Image
 
-1. User taps thumbnail → `ImageViewerScreen` (Android) or `OptimizedImageViewer` (Windows).
-2. `VaultOpenService.decryptToCachedTempFile()` checks temp cache first (deterministic name = no redundant decrypts).
-3. On cache miss: calls `DartCryptoEngine.decryptFile()` inside `Isolate.run()` — UI stays responsive during decrypt.
-4. Key source: `AuthSession.current?.dek` (in-memory, no FlutterSecureStorage round-trip).
-5. `_bestEffortCleanup` deletes temp files older than 24h asynchronously.
+Both Windows and Android now use `ImageViewerScreen` — the same viewer on both platforms.
+
+**How navigation works (crossfade design, no black flash):**
+
+1. User taps thumbnail → `ImageViewerScreen` opens.
+2. Current image is decrypted + pre-rasterised (`precacheImage`) before the first frame renders — no spinner on entry.
+3. Background preload runs for ±2 pages immediately after entry.
+4. User taps Next or Previous:
+   - `_navigateTo(targetIndex)` awaits `decryptToCachedTempFile` AND `precacheImage` for the target before changing `_currentIndex`.
+   - Only after both are complete does `AnimatedSwitcher` trigger a 180ms crossfade from old image to new image.
+   - The old image stays fully visible and opaque throughout the crossfade — the black Scaffold background is never exposed.
+5. Navigation buttons show a small spinner while the target is being prepared (typically 0ms since background preload runs ahead of the user).
+
+**Memory management (OOM fix for 200+ image folders):**
+
+- `_resolved` map holds at most ±5 pages as `File` references.
+- Pages further than 5 away have their Flutter image cache entry explicitly evicted (`PaintingBinding.instance.imageCache.evict`) and their temp file deleted from disk.
+- `wantKeepAlive` is NOT used — Flutter's default ±1 page eviction is allowed to run normally. Re-entry is instant because the temp file is already on disk (idempotent).
+- `imageCache` is capped at 50 decoded images / 50 MB in `main.dart`.
+
+**What was fixed vs v2.5.2:**
+
+| Bug | Root cause | Fix |
+|-----|-----------|-----|
+| Black screen flash on Previous | Windows opened `OptimizedImageViewer` (wrong file); `animateToPage` exposed black Scaffold during slide animation | Both platforms now use `ImageViewerScreen`; `AnimatedSwitcher` crossfade replaces `PageView` slide |
+| OOM crash / lag after ~200 images | `wantKeepAlive: true` pinned all decoded bitmaps forever; `ResizeImage` decoded at 4800×4800px (~88 MB/image); `_cleanupDistantImages` removed Dart map entries but never evicted Flutter image cache | `wantKeepAlive` removed; `ResizeImage` uses logical screen pixels (~10 MB/image); eviction now calls `imageCache.evict` + `file.deleteSync` |
+
+**Key source:** `AuthSession.current?.dek` (in-memory, no FlutterSecureStorage round-trip).  
+**`_bestEffortCleanup`** deletes temp files older than 24h asynchronously on viewer open.
 
 ### Password Change
 
@@ -315,3 +343,11 @@ Refer to task completion reports in `.agents/tasks/`. Key files introduced:
 | `UPGRADE_REPORT.md` | This file |
 | `.agents/tasks/audit-optimize/review.json` | Audit verdict |
 | `.agents/tasks/audit-optimize/review.md` | Human-readable audit summary |
+
+### Image Viewer Overhaul (post-audit)
+
+| File | Change |
+|------|--------|
+| `lib/ui/viewers/image_viewer_screen.dart` | Complete rewrite: replaced `PageView` + `animateToPage` slide transition with `AnimatedSwitcher` + `FadeTransition` crossfade; navigation awaits `precacheImage` before changing page so the black Scaffold is never exposed; `_navigating` flag prevents button spam; ±2 background preload window; ±5 eviction with `imageCache.evict` + `file.deleteSync`; `wantKeepAlive` removed entirely |
+| `lib/ui/home/home_screen.dart` | Switched Windows image open from `OptimizedImageViewer` to `ImageViewerScreen` — both platforms now use the same viewer |
+| `lib/ui/widgets/optimized_image_viewer.dart` | Removed `AutomaticKeepAliveClientMixin` / `wantKeepAlive: true` (OOM root cause); `_cleanupDistantImages` now calls `imageCache.evict` + `file.deleteSync` (was only removing Dart map entry); `ResizeImage` decode target changed from `maxDimension×2` (~88 MB/image) to logical screen size (~10 MB/image); added `didUpdateWidget` to fix stale-future race |

@@ -9,7 +9,7 @@ import '../../models/vault_file.dart';
 import '../../models/vault_folder.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/blob_store.dart';
-import '../../services/dart_crypto_engine.dart';
+import '../../services/native_crypto_engine.dart';
 import '../../services/file_crypto_service.dart';
 import '../../services/file_open_service.dart';
 import '../../services/import_export_service.dart';
@@ -24,8 +24,8 @@ import '../auth/auth_gate.dart';
 import '../pickers/folder_picker_screen.dart';
 import '../settings/settings_screen.dart';
 import '../search/global_search_screen.dart';
+import '../viewers/image_viewer_screen.dart';
 import '../viewers/video_viewer_screen.dart';
-import '../widgets/optimized_image_viewer.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -58,7 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
     repo: _repo,
     jobRepo: JobRepository(),
     blobStore: BlobStore(),
-    crypto: DartCryptoEngine(),
+    // Use NativeCryptoEngine so v1 blobs route to BCrypt (Windows) or
+    // javax.crypto (Android) for hardware-accelerated AES-256-GCM.
+    // Falls back to DartCryptoEngine automatically for v0 blobs.
+    crypto: NativeCryptoEngine(),
     storage: SecureStorageService.instance,
   );
 
@@ -67,6 +70,10 @@ class _HomeScreenState extends State<HomeScreen> {
     crypto: const FileCryptoService(),
     storage: SecureStorageService.instance,
     jobRepo: JobRepository(),
+    // Use NativeCryptoEngine so v1 blob decryption routes to BCrypt (Windows)
+    // for hardware-accelerated AES-256-GCM — ~3,000 MB/s vs ~10 MB/s in Dart.
+    // Falls back to DartCryptoEngine automatically for v0 blobs.
+    cryptoEngine: NativeCryptoEngine(),
   );
 
   late final YomikiruIntegrationService _yomikiru = YomikiruIntegrationService(
@@ -901,9 +908,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openFile(VaultFile file) async {
     if (isImageFileName(file.originalName)) {
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => OptimizedImageViewer(
+        builder: (_) => ImageViewerScreen(
           file: file,
-          allFiles: _files, // Pass all files for navigation
+          allFiles: _files,
         ),
       ));
       return;

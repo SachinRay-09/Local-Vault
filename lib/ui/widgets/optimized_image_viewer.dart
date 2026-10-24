@@ -39,7 +39,7 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
 
   // Performance optimizations
   late AnimationController _fadeController;
-  
+
   // Preloading cache
   final Map<int, File> _imageCache = {};
   final Set<int> _preloadingIndices = {};
@@ -58,22 +58,23 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
   void dispose() {
     _fadeController.dispose();
     _pageController.dispose();
-    
+
     // EMERGENCY: Aggressive memory cleanup
     _imageCache.clear();
     _preloadingIndices.clear();
     _imageFiles.clear();
-    
+
     // Clear image cache to prevent memory leaks
     PaintingBinding.instance.imageCache.clear();
-    
+
     super.dispose();
   }
 
   Future<void> _initializeImages() async {
     // Filter only image files
-    _imageFiles = widget.allFiles.where((f) => isImageFileName(f.originalName)).toList();
-    
+    _imageFiles =
+        widget.allFiles.where((f) => isImageFileName(f.originalName)).toList();
+
     // Find current file index
     _currentIndex = _imageFiles.indexWhere((f) => f.id == widget.file.id);
     if (_currentIndex == -1) {
@@ -82,9 +83,9 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
     }
 
     _pageController = PageController(initialPage: _currentIndex);
-    
+
     setState(() => _loading = false);
-    
+
     // Start preloading current and adjacent images
     _preloadImages();
     _fadeController.forward();
@@ -105,11 +106,14 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
 
   Future<void> _preloadImage(int index) async {
     if (index < 0 || index >= _imageFiles.length) return;
-    if (_imageCache.containsKey(index) || _preloadingIndices.contains(index)) return;
+    if (_imageCache.containsKey(index) || _preloadingIndices.contains(index)) {
+      return;
+    }
 
     _preloadingIndices.add(index);
     try {
-      final file = await _openService.decryptToCachedTempFile(_imageFiles[index]);
+      final file =
+          await _openService.decryptToCachedTempFile(_imageFiles[index]);
       if (mounted) {
         _imageCache[index] = file;
       }
@@ -122,25 +126,33 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
 
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
-    
+
     // Preload adjacent images
     _preloadImage(index - 1);
     _preloadImage(index + 1);
-    
+
     // Clean up distant images to save memory
     _cleanupDistantImages(index);
-    
+
     // Provide haptic feedback
     HapticFeedback.selectionClick();
   }
 
   void _cleanupDistantImages(int currentIndex) {
-    final keysToRemove = _imageCache.keys.where((key) => 
-      (key - currentIndex).abs() > 2
-    ).toList();
-    
+    final keysToRemove = _imageCache.keys
+        .where((key) => (key - currentIndex).abs() > 2)
+        .toList();
+
     for (final key in keysToRemove) {
-      _imageCache.remove(key);
+      final file = _imageCache.remove(key);
+      if (file != null) {
+        // Evict decoded bitmap from Flutter's image codec cache.
+        PaintingBinding.instance.imageCache.evict(FileImage(file));
+        // Delete the plaintext temp file to free disk space.
+        try {
+          file.deleteSync();
+        } catch (_) {}
+      }
     }
   }
 
@@ -197,7 +209,7 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
               );
             },
           ),
-          
+
           // Navigation arrows with better performance
           if (_imageFiles.length > 1) ...[
             // Left arrow
@@ -210,13 +222,16 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
                   opacity: _currentIndex > 0 ? 1.0 : 0.3,
                   duration: const Duration(milliseconds: 200),
                   child: IconButton(
-                    onPressed: _currentIndex > 0 ? () {
-                      _pageController.previousPage(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeInOut,
-                      );
-                    } : null,
-                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 32),
+                    onPressed: _currentIndex > 0
+                        ? () {
+                            _pageController.previousPage(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        : null,
+                    icon: const Icon(Icons.arrow_back_ios,
+                        color: Colors.white, size: 32),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.black.withOpacity(0.5),
                     ),
@@ -224,7 +239,7 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
                 ),
               ),
             ),
-            
+
             // Right arrow
             Positioned(
               right: 16,
@@ -235,13 +250,16 @@ class _OptimizedImageViewerState extends State<OptimizedImageViewer>
                   opacity: _currentIndex < _imageFiles.length - 1 ? 1.0 : 0.3,
                   duration: const Duration(milliseconds: 200),
                   child: IconButton(
-                    onPressed: _currentIndex < _imageFiles.length - 1 ? () {
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeInOut,
-                      );
-                    } : null,
-                    icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 32),
+                    onPressed: _currentIndex < _imageFiles.length - 1
+                        ? () {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        : null,
+                    icon: const Icon(Icons.arrow_forward_ios,
+                        color: Colors.white, size: 32),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.black.withOpacity(0.5),
                     ),
@@ -271,16 +289,33 @@ class _OptimizedImagePage extends StatefulWidget {
   State<_OptimizedImagePage> createState() => _OptimizedImagePageState();
 }
 
-class _OptimizedImagePageState extends State<_OptimizedImagePage>
-    with AutomaticKeepAliveClientMixin {
+class _OptimizedImagePageState extends State<_OptimizedImagePage> {
+  // AutomaticKeepAliveClientMixin intentionally removed.
+  // wantKeepAlive=true was pinning every page's decoded bitmap in memory
+  // forever, causing OOM after ~200 images. PageView's default ±1 eviction
+  // is the correct behaviour — re-entry is fast via decryptToCachedTempFile.
   Future<File>? _future;
-  
-  @override
-  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    _resolveFuture();
+  }
+
+  @override
+  void didUpdateWidget(_OptimizedImagePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the parent cached the file after this page was built with null
+    // (race between preload and PageView building the widget), switch to
+    // the already-available file so we don't keep the full decrypt future.
+    if (oldWidget.cachedFile == null && widget.cachedFile != null) {
+      setState(() {
+        _future = Future.value(widget.cachedFile!);
+      });
+    }
+  }
+
+  void _resolveFuture() {
     if (widget.cachedFile != null) {
       _future = Future.value(widget.cachedFile!);
     } else {
@@ -290,8 +325,6 @@ class _OptimizedImagePageState extends State<_OptimizedImagePage>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-    
     return FutureBuilder<File>(
       future: _future,
       builder: (context, snapshot) {
@@ -310,23 +343,22 @@ class _OptimizedImagePageState extends State<_OptimizedImagePage>
             ),
           );
         }
-        
+
         final file = snapshot.data!;
         final screenSize = MediaQuery.of(context).size;
-        final maxDimension = (screenSize.width > screenSize.height 
-            ? screenSize.width 
-            : screenSize.height).round();
-        
+
         return InteractiveViewer(
           minScale: 0.5,
           maxScale: 4.0,
           child: Center(
             child: Image(
-              // PHASE 2A.3: Progressive Image Loading - ResizeImage for performance
+              // Use logical screen pixels — no ×2 multiplier.
+              // maxDimension*2 was decoding each image to ~88 MB on 1080p
+              // devices; logical pixels cap it to ~10 MB per frame.
               image: ResizeImage(
                 FileImage(file),
-                width: maxDimension * 2, // 2x screen resolution for quality
-                height: maxDimension * 2,
+                width: screenSize.width.round(),
+                height: screenSize.height.round(),
                 allowUpscaling: false,
               ),
               fit: BoxFit.contain,

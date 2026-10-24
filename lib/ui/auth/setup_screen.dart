@@ -22,7 +22,7 @@ class _SetupScreenState extends State<SetupScreen> {
   final _password2 = TextEditingController();
   final _q1Text = TextEditingController(text: 'What is your favorite city?');
   final _q1Answer = TextEditingController();
-  final _q2Text = TextEditingController(text: 'What is your first pet name?');
+  final _q2Text = TextEditingController(text: 'What is your favorite movie?');
   final _q2Answer = TextEditingController();
 
   bool _busy = false;
