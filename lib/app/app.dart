@@ -7,28 +7,49 @@ import '../models/operation_job_item.dart';
 import '../services/app_lifecycle_service.dart';
 import '../services/blob_store.dart';
 import '../services/job_repository.dart';
+import '../services/settings_service.dart';
 import '../ui/auth/auth_gate.dart';
+import 'vault_theme.dart';
 
 class VaultApp extends StatefulWidget {
   const VaultApp({super.key});
+
+  /// Process-global theme notifier. Default: ThemeMode.system.
+  /// Updated after first frame from persisted AppSettings.
+  static final ValueNotifier<ThemeMode> themeMode =
+      ValueNotifier(ThemeMode.system);
 
   @override
   State<VaultApp> createState() => _VaultAppState();
 }
 
 class _VaultAppState extends State<VaultApp> with WidgetsBindingObserver {
+  late final ThemeData _lightTheme;
+  late final ThemeData _darkTheme;
   late final AppLifecycleService _lifecycleService;
 
   @override
   void initState() {
     super.initState();
+    const seed = Color(0xFF5B5BD6);
+    _lightTheme = buildVaultTheme(
+        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light));
+    _darkTheme = buildVaultTheme(
+        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark));
+
     _lifecycleService = AppLifecycleService();
     WidgetsBinding.instance.addObserver(this);
     _lifecycleService.initialize();
 
-    // Crash recovery: check for interrupted jobs after the first frame so the
-    // navigator context is ready.
+    // Load persisted theme, then run crash recovery after the first frame so
+    // the navigator context is ready.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final raw = await SettingsService().getThemeMode();
+        VaultApp.themeMode.value = parseThemeMode(raw);
+      } catch (e) {
+        debugPrint('[App] Theme load failed: $e');
+      }
       try {
         await _checkInterruptedJobs();
       } catch (e) {
@@ -126,31 +147,15 @@ class _VaultAppState extends State<VaultApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF5B5BD6),
-      brightness: Brightness.light,
-    );
-
-    return MaterialApp(
-      title: 'Local Vault',
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        useMaterial3: true,
-        scaffoldBackgroundColor: colorScheme.surface,
-        appBarTheme: AppBarTheme(
-          backgroundColor: colorScheme.surface,
-          foregroundColor: colorScheme.onSurface,
-          centerTitle: false,
-          elevation: 0,
-        ),
-        cardTheme: CardTheme(
-          color: colorScheme.surface,
-          elevation: 0,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: VaultApp.themeMode,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'Local Vault',
+        theme: _lightTheme,
+        darkTheme: _darkTheme,
+        themeMode: mode,
+        home: const AuthGate(),
       ),
-      home: const AuthGate(),
     );
   }
 }

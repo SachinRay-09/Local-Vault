@@ -1658,19 +1658,25 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     if (_visibleFolders.isEmpty &&
                         _visibleFiles.isEmpty &&
                         !_loading)
-                      const SliverToBoxAdapter(
+                      SliverToBoxAdapter(
                         child: Padding(
-                          padding: EdgeInsets.all(24),
+                          padding: const EdgeInsets.all(24),
                           child: Column(
                             children: [
                               Icon(Icons.folder_open,
-                                  size: 64, color: Colors.grey),
-                              SizedBox(height: 16),
-                              Text('No items found'),
-                              SizedBox(height: 8),
+                                  size: 64,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant),
+                              const SizedBox(height: 16),
+                              const Text('No items found'),
+                              const SizedBox(height: 8),
                               Text(
                                 'Import an encrypted vault file to get started',
-                                style: TextStyle(color: Colors.grey),
+                                style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -1949,9 +1955,11 @@ class _MihonProgressDialogState extends State<_MihonProgressDialog> {
               const SizedBox(height: 24),
               Text(_currentStatus, style: const TextStyle(fontSize: 14)),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Decrypting and exporting images...',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ] else ...[
               const Center(

@@ -60,6 +60,26 @@ class SettingsService {
     });
   }
 
+  /// Returns the persisted theme mode, defaulting to 'system' for any
+  /// unrecognized value.
+  Future<String> getThemeMode() async {
+    final s = await getOrCreate();
+    final mode = s.themeMode;
+    if (mode != 'system' && mode != 'light' && mode != 'dark') return 'system';
+    return mode;
+  }
+
+  /// Persists the theme mode after validating it. Unrecognized values are
+  /// stored as 'system'.
+  Future<void> setThemeMode(String mode) async {
+    final validated = (mode == 'light' || mode == 'dark') ? mode : 'system';
+    final s = await getOrCreate();
+    s.themeMode = validated;
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(s);
+    });
+  }
+
   Future<VaultStats> stats() async {
     final folders = await _isar.vaultFolders.where().anyId().findAll();
     final fileCount = await _isar.vaultFiles.where().anyId().count();
@@ -73,4 +93,3 @@ class SettingsService {
     );
   }
 }
-

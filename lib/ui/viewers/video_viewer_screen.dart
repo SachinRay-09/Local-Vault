@@ -49,7 +49,8 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Decrypting large video (${formatBytes(widget.file.byteSize)})...'),
+              content: Text(
+                  'Decrypting large video (${formatBytes(widget.file.byteSize)})...'),
               duration: const Duration(seconds: 10),
             ),
           );
@@ -58,9 +59,9 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
 
       _tempFuture = _openService.decryptToCachedTempFile(widget.file);
       final f = await _tempFuture!;
-      
+
       if (!mounted) return;
-      
+
       // Verify the file exists and is readable
       if (!await f.exists()) {
         throw Exception('Decrypted video file not found');
@@ -70,9 +71,9 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
       if (fileSize == 0) {
         throw Exception('Decrypted video file is empty');
       }
-      
+
       final c = VideoPlayerController.file(f);
-      
+
       // Add timeout for video initialization
       await c.initialize().timeout(
         const Duration(seconds: 30),
@@ -80,14 +81,14 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
           throw Exception('Video initialization timed out');
         },
       );
-      
+
       c.setLooping(false); // Don't auto-loop large videos
-      
+
       if (!mounted) {
         await c.dispose();
         return;
       }
-      
+
       setState(() {
         _controller = c;
         _isInitializing = false;
@@ -128,7 +129,9 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
             ),
             Text(
               formatBytes(widget.file.byteSize),
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -220,7 +223,8 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
               VideoProgressIndicator(
                 c,
                 allowScrubbing: true,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -240,7 +244,8 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
                           c.value.isPlaying ? c.pause() : c.play();
                         });
                       },
-                      icon: Icon(c.value.isPlaying ? Icons.pause : Icons.play_arrow),
+                      icon: Icon(
+                          c.value.isPlaying ? Icons.pause : Icons.play_arrow),
                       label: Text(c.value.isPlaying ? 'Pause' : 'Play'),
                     ),
                     IconButton(
@@ -260,4 +265,3 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
     );
   }
 }
-

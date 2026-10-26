@@ -17,4 +17,12 @@ class AppSettings {
 
   /// When the counter was last reconciled against all VaultFile rows.
   DateTime? lastReconciledAt;
+
+  /// Persisted theme mode. Valid: 'system' | 'light' | 'dark'.
+  /// Default 'system' — existing light-mode users see no change.
+  String themeMode = 'system';
+
+  /// Whether to block screenshots on Android (FLAG_SECURE).
+  /// Default false = screenshots enabled (no change from current behaviour).
+  bool blockScreenshots = false;
 }

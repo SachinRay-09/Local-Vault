@@ -2700,12 +2700,17 @@ class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
                 if (elapsedTime.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(elapsedTime,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'This may take a few minutes depending on vault size...',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ] else ...[
                 const Center(
@@ -2827,12 +2832,17 @@ class _SaveToGalleryProgressDialogState
                 if (elapsedTime.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(elapsedTime,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Creating unencrypted ZIP file...',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ] else ...[
                 const Center(
@@ -2948,9 +2958,11 @@ class _YomikiruProgressDialogState extends State<_YomikiruProgressDialog> {
                 const SizedBox(height: 24),
                 Text(_currentStatus, style: const TextStyle(fontSize: 14)),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Decrypting and exporting images...',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ] else ...[
                 const Center(
@@ -3075,14 +3087,17 @@ class _ExportFolderZipProgressDialogState
                 if (elapsedTime.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(elapsedTime,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
                 const SizedBox(height: 16),
                 Text(
                   'Exporting: ${widget.folder.name}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.bold),
                 ),
               ] else ...[
