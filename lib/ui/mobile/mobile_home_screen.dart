@@ -1715,6 +1715,19 @@ class _FolderImportProgressDialogState
   int _processed = 0;
   int _imported = 0;
   bool _isComplete = false;
+  bool _pendingRebuild = false;
+
+  // Coalesce rebuilds into at most one per frame so the per-file progress
+  // updates do not thrash the UI isolate. This dialog imports via
+  // VaultRepository.addMedia directly and has no byte totals to show.
+  void _scheduleRebuild() {
+    if (_pendingRebuild) return;
+    _pendingRebuild = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+      _pendingRebuild = false;
+    });
+  }
 
   @override
   void initState() {
@@ -1782,19 +1795,18 @@ class _FolderImportProgressDialogState
 
             _processed++;
 
-            // Update UI more frequently but not on every file
-            if (_processed % 1 == 0 || _processed == totalFiles) {
-              setState(() =>
-                  _status = 'Imported ${file.name} ($_processed/$totalFiles)');
-            }
+            // Coalesce: schedule at most one rebuild per frame instead of
+            // calling setState for every file.
+            _status = 'Imported ${file.name} ($_processed/$totalFiles)';
+            _scheduleRebuild();
           }
 
           // Yield to UI thread after each batch to prevent blocking
           await Future.delayed(const Duration(milliseconds: 10));
 
-          // Allow UI to update
+          // Allow UI to update (coalesced).
           if (mounted) {
-            setState(() {});
+            _scheduleRebuild();
           }
         }
       }
@@ -2010,15 +2022,44 @@ class _MobileZipImportDialog extends StatefulWidget {
 
 class _MobileZipImportDialogState extends State<_MobileZipImportDialog> {
   String _statusText = 'Starting ZIP import…';
-  int _completedFiles = 0;
-  int _totalFiles = 0;
+  int _latestCompleted = 0;
+  int _latestTotal = 0;
+  int _latestProcessedBytes = 0;
+  int _latestTotalBytes = 0;
   bool _isComplete = false;
   String? _errorText;
+  bool _pendingRebuild = false;
 
   @override
   void initState() {
     super.initState();
     _startImport();
+  }
+
+  // Coalesce progress events into at most one rebuild per frame so a burst of
+  // ImportProgress yields does not thrash the UI isolate. The bar is
+  // indeterminate during the ZIP pre-count phase (total is 0 until the first
+  // entry is processed).
+  void _onProgress(ImportProgress p) {
+    _latestCompleted = p.completedFiles;
+    _latestTotal = p.totalFiles;
+    _latestProcessedBytes = p.processedBytes;
+    _latestTotalBytes = p.totalBytes;
+    _scheduleRebuild();
+  }
+
+  void _onStatus(String msg) {
+    _statusText = msg;
+    _scheduleRebuild();
+  }
+
+  void _scheduleRebuild() {
+    if (_pendingRebuild) return;
+    _pendingRebuild = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+      _pendingRebuild = false;
+    });
   }
 
   Future<void> _startImport() async {
@@ -2027,20 +2068,15 @@ class _MobileZipImportDialogState extends State<_MobileZipImportDialog> {
         widget.zipPath,
         widget.destinationFolderId,
         password: widget.password,
-        onStatus: (msg) {
-          if (mounted) setState(() => _statusText = msg);
-        },
+        onStatus: _onStatus,
       )) {
         if (!mounted) break;
-        setState(() {
-          _completedFiles = progress.completedFiles;
-          _totalFiles = progress.totalFiles;
-        });
+        _onProgress(progress);
       }
       if (mounted) {
         setState(() {
           _isComplete = true;
-          _statusText = 'Import complete! $_completedFiles files imported.';
+          _statusText = 'Import complete! $_latestCompleted files imported.';
         });
       }
     } catch (e) {
@@ -2054,9 +2090,11 @@ class _MobileZipImportDialogState extends State<_MobileZipImportDialog> {
     }
   }
 
+  static String _fmtMb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
+
   @override
   Widget build(BuildContext context) {
-    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    final fraction = _latestTotal > 0 ? _latestCompleted / _latestTotal : null;
     return PopScope(
       canPop: _isComplete,
       child: AlertDialog(
@@ -2075,9 +2113,17 @@ class _MobileZipImportDialogState extends State<_MobileZipImportDialog> {
             const SizedBox(height: 12),
             LinearProgressIndicator(value: fraction),
             const SizedBox(height: 4),
-            if (_totalFiles > 0)
-              Text('$_completedFiles / $_totalFiles files',
+            if (_latestTotal > 0)
+              Text('$_latestCompleted / $_latestTotal files',
                   style: const TextStyle(fontSize: 12)),
+            if (_latestTotalBytes > 0)
+              Text(
+                '${_fmtMb(_latestProcessedBytes)} / ${_fmtMb(_latestTotalBytes)} MB',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
           ],
         ),
         actions: [
@@ -2122,11 +2168,36 @@ class _MobileFolderImportDialogState extends State<_MobileFolderImportDialog> {
   int _totalFiles = 0;
   bool _isComplete = false;
   String? _errorText;
+  bool _pendingRebuild = false;
 
   @override
   void initState() {
     super.initState();
     _startImport();
+  }
+
+  // Coalesce progress events into at most one rebuild per frame so a burst of
+  // ImportProgress yields does not thrash the UI isolate. No byte progress is
+  // shown on this dialog (this path imports a flat file list; the file count
+  // is the meaningful signal).
+  void _onProgress(ImportProgress p) {
+    _completedFiles = p.completedFiles;
+    _totalFiles = p.totalFiles;
+    _scheduleRebuild();
+  }
+
+  void _onStatus(String msg) {
+    _statusText = msg;
+    _scheduleRebuild();
+  }
+
+  void _scheduleRebuild() {
+    if (_pendingRebuild) return;
+    _pendingRebuild = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+      _pendingRebuild = false;
+    });
   }
 
   Future<void> _startImport() async {
@@ -2135,15 +2206,10 @@ class _MobileFolderImportDialogState extends State<_MobileFolderImportDialog> {
         widget.filePaths,
         widget.currentFolderId,
         folderName: widget.folderName,
-        onStatus: (msg) {
-          if (mounted) setState(() => _statusText = msg);
-        },
+        onStatus: _onStatus,
       )) {
         if (!mounted) break;
-        setState(() {
-          _completedFiles = progress.completedFiles;
-          _totalFiles = progress.totalFiles;
-        });
+        _onProgress(progress);
       }
       if (mounted) {
         setState(() {

@@ -5,6 +5,7 @@ import '../../app/vault_theme.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/settings_service.dart';
 import '../auth/auth_gate.dart';
+import '../auth/change_password_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -140,7 +141,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Text('Folders: ${stats.folderCount}'),
                               Text('Files: ${stats.fileCount}'),
                               Text('Used: ${_fmtBytes(stats.totalBytes)}'),
+                              if (_maxBytes != null) ...[
+                                const SizedBox(height: 8),
+                                LinearProgressIndicator(
+                                  value: (stats.totalBytes / _maxBytes!)
+                                      .clamp(0.0, 1.0),
+                                ),
+                              ],
                             ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Security',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 8),
+                            ListTile(
+                              leading: const Icon(Icons.key_outlined),
+                              title: const Text('Change Password'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ChangePasswordScreen()),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _lockVault,
+                              icon: const Icon(Icons.lock_outline),
+                              label: const Text('Lock vault'),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Forgotten password = permanent data loss — '
+                              'store it safely.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -196,6 +245,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Text('Maintenance',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _clearTemp,
+                              icon:
+                                  const Icon(Icons.cleaning_services_outlined),
+                              label: const Text('Clear temp cache'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text('Storage limit',
                                 style: Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 8),
@@ -216,32 +285,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: FilledButton(
                                   onPressed: _saveLimit,
                                   child: const Text('Save')),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Maintenance',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: _clearTemp,
-                              icon:
-                                  const Icon(Icons.cleaning_services_outlined),
-                              label: const Text('Clear temp cache'),
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              onPressed: _lockVault,
-                              icon: const Icon(Icons.lock_outline),
-                              label: const Text('Lock vault'),
                             ),
                           ],
                         ),

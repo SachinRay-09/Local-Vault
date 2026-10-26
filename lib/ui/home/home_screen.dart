@@ -2399,15 +2399,42 @@ class _ImportCoordinatorProgressDialog extends StatefulWidget {
 class _ImportCoordinatorProgressDialogState
     extends State<_ImportCoordinatorProgressDialog> {
   String _statusText = 'Starting import…';
-  int _completedFiles = 0;
-  int _totalFiles = 0;
+  int _latestCompleted = 0;
+  int _latestTotal = 0;
+  int _latestProcessedBytes = 0;
+  int _latestTotalBytes = 0;
   bool _isComplete = false;
   String? _errorText;
+  bool _pendingRebuild = false;
 
   @override
   void initState() {
     super.initState();
     _startImport();
+  }
+
+  // Coalesce progress events into at most one rebuild per frame so a burst of
+  // ImportProgress yields does not thrash the UI isolate.
+  void _onProgress(ImportProgress p) {
+    _latestCompleted = p.completedFiles;
+    _latestTotal = p.totalFiles;
+    _latestProcessedBytes = p.processedBytes;
+    _latestTotalBytes = p.totalBytes;
+    _scheduleRebuild();
+  }
+
+  void _onStatus(String msg) {
+    _statusText = msg;
+    _scheduleRebuild();
+  }
+
+  void _scheduleRebuild() {
+    if (_pendingRebuild) return;
+    _pendingRebuild = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+      _pendingRebuild = false;
+    });
   }
 
   Future<void> _startImport() async {
@@ -2416,15 +2443,10 @@ class _ImportCoordinatorProgressDialogState
         widget.sourceFolderPath,
         widget.destinationFolderId,
         includeVideo: widget.includeVideo,
-        onStatus: (msg) {
-          if (mounted) setState(() => _statusText = msg);
-        },
+        onStatus: _onStatus,
       )) {
         if (!mounted) break;
-        setState(() {
-          _completedFiles = progress.completedFiles;
-          _totalFiles = progress.totalFiles;
-        });
+        _onProgress(progress);
       }
       if (mounted) {
         setState(() {
@@ -2443,9 +2465,11 @@ class _ImportCoordinatorProgressDialogState
     }
   }
 
+  static String _fmtMb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
+
   @override
   Widget build(BuildContext context) {
-    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    final fraction = _latestTotal > 0 ? _latestCompleted / _latestTotal : null;
     return PopScope(
       canPop: _isComplete,
       child: AlertDialog(
@@ -2464,9 +2488,17 @@ class _ImportCoordinatorProgressDialogState
             const SizedBox(height: 12),
             LinearProgressIndicator(value: fraction),
             const SizedBox(height: 4),
-            if (_totalFiles > 0)
-              Text('$_completedFiles / $_totalFiles files',
+            if (_latestTotal > 0)
+              Text('$_latestCompleted / $_latestTotal files',
                   style: const TextStyle(fontSize: 12)),
+            if (_latestTotalBytes > 0)
+              Text(
+                '${_fmtMb(_latestProcessedBytes)} / ${_fmtMb(_latestTotalBytes)} MB',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
           ],
         ),
         actions: [
@@ -3154,15 +3186,44 @@ class _ZipImportProgressDialog extends StatefulWidget {
 
 class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
   String _statusText = 'Opening ZIP...';
-  int _completedFiles = 0;
-  int _totalFiles = 0;
+  int _latestCompleted = 0;
+  int _latestTotal = 0;
+  int _latestProcessedBytes = 0;
+  int _latestTotalBytes = 0;
   bool _isComplete = false;
   String? _errorText;
+  bool _pendingRebuild = false;
 
   @override
   void initState() {
     super.initState();
     _startImport();
+  }
+
+  // Coalesce progress events into at most one rebuild per frame so a burst of
+  // ImportProgress yields does not thrash the UI isolate. The bar is
+  // indeterminate during the ZIP pre-count phase (total is 0 until the first
+  // entry is processed).
+  void _onProgress(ImportProgress p) {
+    _latestCompleted = p.completedFiles;
+    _latestTotal = p.totalFiles;
+    _latestProcessedBytes = p.processedBytes;
+    _latestTotalBytes = p.totalBytes;
+    _scheduleRebuild();
+  }
+
+  void _onStatus(String msg) {
+    _statusText = msg;
+    _scheduleRebuild();
+  }
+
+  void _scheduleRebuild() {
+    if (_pendingRebuild) return;
+    _pendingRebuild = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+      _pendingRebuild = false;
+    });
   }
 
   Future<void> _startImport() async {
@@ -3171,15 +3232,10 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
         widget.zipPath,
         widget.destinationFolderId,
         password: widget.password,
-        onStatus: (msg) {
-          if (mounted) setState(() => _statusText = msg);
-        },
+        onStatus: _onStatus,
       )) {
         if (!mounted) break;
-        setState(() {
-          _completedFiles = progress.completedFiles;
-          _totalFiles = progress.totalFiles;
-        });
+        _onProgress(progress);
       }
       if (mounted) {
         setState(() {
@@ -3200,9 +3256,11 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
     }
   }
 
+  static String _fmtMb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
+
   @override
   Widget build(BuildContext context) {
-    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    final fraction = _latestTotal > 0 ? _latestCompleted / _latestTotal : null;
     return PopScope(
       canPop: _isComplete,
       child: AlertDialog(
@@ -3221,9 +3279,17 @@ class _ZipImportProgressDialogState extends State<_ZipImportProgressDialog> {
             const SizedBox(height: 12),
             LinearProgressIndicator(value: fraction),
             const SizedBox(height: 4),
-            if (_totalFiles > 0)
-              Text('$_completedFiles / $_totalFiles files',
+            if (_latestTotal > 0)
+              Text('$_latestCompleted / $_latestTotal files',
                   style: const TextStyle(fontSize: 12)),
+            if (_latestTotalBytes > 0)
+              Text(
+                '${_fmtMb(_latestProcessedBytes)} / ${_fmtMb(_latestTotalBytes)} MB',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
           ],
         ),
         actions: [
