@@ -14,6 +14,7 @@ import java.io.File
 class MainActivity : FlutterActivity() {
   private val CHANNEL = "local_vault/file_opener"
   private val THERMAL_CHANNEL = "thermal_protection"
+  private val SECURITY_CHANNEL = "local_vault/window_security"
 
   private var cryptoBridge: CryptoBridge? = null
 
@@ -82,6 +83,27 @@ class MainActivity : FlutterActivity() {
             }
           } catch (e: Exception) {
             result.success(1.0f)
+          }
+        }
+        else -> result.notImplemented()
+      }
+    }
+
+    // Window security channel (FLAG_SECURE for screenshot blocking)
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SECURITY_CHANNEL).setMethodCallHandler { call, result ->
+      when (call.method) {
+        "setSecureFlag" -> {
+          val enable = call.argument<Boolean>("enable") ?: false
+          runOnUiThread {
+            if (enable) {
+              window.setFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                android.view.WindowManager.LayoutParams.FLAG_SECURE
+              )
+            } else {
+              window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+            result.success(null)
           }
         }
         else -> result.notImplemented()

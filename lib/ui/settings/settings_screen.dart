@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app.dart';
 import '../../app/vault_theme.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/window_security_service.dart';
 import '../auth/auth_gate.dart';
 import '../auth/change_password_screen.dart';
 
@@ -20,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   VaultStats? _stats;
   int? _maxBytes;
   ThemeMode _currentThemeMode = ThemeMode.system;
+  bool _blockScreenshots = false;
 
   final _limitMbController = TextEditingController();
   bool _busy = true;
@@ -46,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxBytes = s.maxStorageBytes;
     _stats = stats;
     _currentThemeMode = parseThemeMode(rawTheme);
+    _blockScreenshots = s.blockScreenshots;
     _limitMbController.text = _maxBytes == null
         ? ''
         : (_maxBytes! / (1024 * 1024)).toStringAsFixed(0);
@@ -88,6 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _lockVault() {
+    unawaited(WindowSecurityService.setSecureFlag(false));
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const AuthGate()),
       (_) => false,
@@ -173,6 +179,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     builder: (_) =>
                                         const ChangePasswordScreen()),
                               ),
+                            ),
+                            SwitchListTile(
+                              secondary: const Icon(Icons.screenshot_outlined),
+                              title: const Text('Block screenshots'),
+                              subtitle: const Text(
+                                'Blocks screenshots and recent-apps preview while the vault is open',
+                              ),
+                              value: _blockScreenshots,
+                              onChanged: (val) async {
+                                setState(() => _blockScreenshots = val);
+                                final s = await _settings.getOrCreate();
+                                s.blockScreenshots = val;
+                                await _settings.saveSettings(s);
+                                unawaited(
+                                    WindowSecurityService.setSecureFlag(val));
+                              },
                             ),
                             OutlinedButton.icon(
                               onPressed: _lockVault,

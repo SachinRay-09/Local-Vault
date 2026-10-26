@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/secure_storage_service.dart';
+import '../../services/settings_service.dart';
+import '../../services/window_security_service.dart';
 import '../home/home_screen.dart';
 import '../mobile/mobile_home_screen.dart';
 import 'login_screen.dart';
@@ -16,13 +20,26 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  late final AuthService _auth = AuthService(secureStorage: SecureStorageService.instance);
+  late final AuthService _auth =
+      AuthService(secureStorage: SecureStorageService.instance);
   late Future<AuthState> _load = _auth.loadState();
 
   Future<void> _reload() async {
     setState(() {
       _load = _auth.loadState();
     });
+  }
+
+  Future<void> _applyFlagOnUnlock() async {
+    try {
+      final svc = SettingsService();
+      final s = await svc.getOrCreate();
+      if (s.blockScreenshots) {
+        await WindowSecurityService.setSecureFlag(true);
+      }
+    } catch (e) {
+      debugPrint('[AuthGate] applyFlagOnUnlock: $e');
+    }
   }
 
   /// Get the appropriate home screen based on platform
@@ -41,7 +58,8 @@ class _AuthGateState extends State<AuthGate> {
       future: _load,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
 
         final state = snapshot.data!;
@@ -55,9 +73,11 @@ class _AuthGateState extends State<AuthGate> {
         return LoginScreen(
           auth: _auth,
           onUnlocked: () {
+            unawaited(_applyFlagOnUnlock());
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
-                builder: (_) => _getHomeScreen(), // Use platform-appropriate interface
+                builder: (_) =>
+                    _getHomeScreen(), // Use platform-appropriate interface
               ),
             );
           },
@@ -67,4 +87,3 @@ class _AuthGateState extends State<AuthGate> {
     );
   }
 }
-

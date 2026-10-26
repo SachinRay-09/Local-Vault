@@ -14,6 +14,7 @@ import '../models/vault_key_envelope.dart';
 import '../services/credential_repository.dart';
 import '../services/dart_crypto_engine.dart';
 import '../services/secure_storage_service.dart';
+import '../services/window_security_service.dart';
 
 // ---------------------------------------------------------------------------
 // Top-level worker — must be a top-level function to cross isolate boundaries.
@@ -373,6 +374,10 @@ class AuthSession with WidgetsBindingObserver {
   void lock() {
     _lockTimer?.cancel();
     _lockTimer = null;
+
+    // Clear screenshot blocking flag before zeroing key material (fire-and-forget,
+    // no-op on non-Android). .ignore() satisfies the unawaited-future lint.
+    WindowSecurityService.setSecureFlag(false).ignore();
 
     // Zero the key material in place.
     dek.fillRange(0, dek.length, 0);
