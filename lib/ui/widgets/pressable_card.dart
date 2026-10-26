@@ -56,7 +56,12 @@ class _PressableCardState extends State<PressableCard> {
             curve: Curves.easeOut,
             decoration: BoxDecoration(
               // Hover tint: subtle surfaceContainerHigh shift on desktop,
-              // transparent on mobile (touch has ripple, no hover).
+              // fully transparent on mobile (touch has ripple, no hover).
+              // This app targets Windows and Android only (no iOS directory);
+              // !Platform.isAndroid correctly selects desktop for both platforms.
+              // Colors.transparent is used intentionally as a zero-opacity
+              // sentinel — not a themed color — because the parent widget
+              // supplies its own background and we want no overlay at all.
               color: _hovered && !Platform.isAndroid
                   ? colorScheme.surfaceContainerHigh.withOpacity(0.6)
                   : Colors.transparent,

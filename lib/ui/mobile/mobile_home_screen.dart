@@ -1535,7 +1535,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 : () => _openFolder(folder),
                             onLongPress: _selectionMode
                                 ? null
-                                : () => _toggleFolderSelection(folder),
+                                : () => _showFolderOptions(folder),
                             child: Card(
                               margin: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 2),
@@ -1593,7 +1593,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                 : () => _openFile(file),
                             onLongPress: _selectionMode
                                 ? null
-                                : () => _toggleFileSelection(file),
+                                : () => _showFileOptions(file),
                             child: Card(
                               margin: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 2),
