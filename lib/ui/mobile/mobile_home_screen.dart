@@ -26,6 +26,7 @@ import '../settings/settings_screen.dart';
 import '../search/global_search_screen.dart';
 import '../viewers/image_viewer_screen.dart';
 import '../viewers/video_viewer_screen.dart';
+import '../widgets/pressable_card.dart';
 
 class MobileHomeScreen extends StatefulWidget {
   const MobileHomeScreen({super.key});
@@ -1527,45 +1528,50 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           final folder = _visibleFolders[index];
                           final isSelected =
                               _selectedFolderIds.contains(folder.id);
-                          return Card(
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : null,
-                            child: ListTile(
-                              dense: true,
-                              leading: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_selectionMode)
-                                    Checkbox(
-                                      value: isSelected,
-                                      onChanged: (_) =>
-                                          _toggleFolderSelection(folder),
-                                    )
-                                  else
-                                    const Icon(Icons.folder, size: 20),
-                                ],
+                          return PressableCard(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _selectionMode
+                                ? () => _toggleFolderSelection(folder)
+                                : () => _openFolder(folder),
+                            onLongPress: _selectionMode
+                                ? null
+                                : () => _toggleFolderSelection(folder),
+                            child: Card(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              color: isSelected
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer
+                                  : null,
+                              child: ListTile(
+                                dense: true,
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_selectionMode)
+                                      Checkbox(
+                                        value: isSelected,
+                                        onChanged: (_) =>
+                                            _toggleFolderSelection(folder),
+                                      )
+                                    else
+                                      const Icon(Icons.folder, size: 20),
+                                  ],
+                                ),
+                                title: Text(
+                                  folder.name,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                trailing: _selectionMode
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.more_vert,
+                                            size: 16),
+                                        onPressed: () =>
+                                            _showFolderOptions(folder),
+                                      ),
                               ),
-                              title: Text(
-                                folder.name,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                              trailing: _selectionMode
-                                  ? null
-                                  : IconButton(
-                                      icon:
-                                          const Icon(Icons.more_vert, size: 16),
-                                      onPressed: () =>
-                                          _showFolderOptions(folder),
-                                    ),
-                              onTap: _selectionMode
-                                  ? () => _toggleFolderSelection(folder)
-                                  : () => _openFolder(folder),
-                              onLongPress: _selectionMode
-                                  ? null
-                                  : () => _toggleFolderSelection(folder),
                             ),
                           );
                         },
@@ -1580,55 +1586,61 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           final file = _visibleFiles[index];
                           final isImg = isImageFileName(file.originalName);
                           final isSelected = _selectedFileIds.contains(file.id);
-                          return Card(
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : null,
-                            child: ListTile(
-                              dense: true, // Compact layout for mobile
-                              leading: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_selectionMode)
-                                    Checkbox(
-                                      value: isSelected,
-                                      onChanged: (_) =>
-                                          _toggleFileSelection(file),
-                                    )
-                                  else
-                                    Icon(
-                                      isImg
-                                          ? Icons.image
-                                          : Icons.insert_drive_file,
-                                      size: 20, // Smaller icons for performance
-                                    ),
-                                ],
+                          return PressableCard(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _selectionMode
+                                ? () => _toggleFileSelection(file)
+                                : () => _openFile(file),
+                            onLongPress: _selectionMode
+                                ? null
+                                : () => _toggleFileSelection(file),
+                            child: Card(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              color: isSelected
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer
+                                  : null,
+                              child: ListTile(
+                                dense: true, // Compact layout for mobile
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_selectionMode)
+                                      Checkbox(
+                                        value: isSelected,
+                                        onChanged: (_) =>
+                                            _toggleFileSelection(file),
+                                      )
+                                    else
+                                      Icon(
+                                        isImg
+                                            ? Icons.image
+                                            : Icons.insert_drive_file,
+                                        size:
+                                            20, // Smaller icons for performance
+                                      ),
+                                  ],
+                                ),
+                                title: Text(
+                                  file.originalName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                subtitle: Text(
+                                  formatBytes(file.byteSize),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                trailing: _selectionMode
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.more_vert,
+                                            size: 16),
+                                        onPressed: () => _showFileOptions(file),
+                                      ),
                               ),
-                              title: Text(
-                                file.originalName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                              subtitle: Text(
-                                formatBytes(file.byteSize),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              trailing: _selectionMode
-                                  ? null
-                                  : IconButton(
-                                      icon:
-                                          const Icon(Icons.more_vert, size: 16),
-                                      onPressed: () => _showFileOptions(file),
-                                    ),
-                              onTap: _selectionMode
-                                  ? () => _toggleFileSelection(file)
-                                  : () => _openFile(file),
-                              onLongPress: _selectionMode
-                                  ? null
-                                  : () => _toggleFileSelection(file),
                             ),
                           );
                         },

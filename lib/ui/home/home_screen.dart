@@ -26,6 +26,7 @@ import '../settings/settings_screen.dart';
 import '../search/global_search_screen.dart';
 import '../viewers/image_viewer_screen.dart';
 import '../viewers/video_viewer_screen.dart';
+import '../widgets/pressable_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1985,11 +1986,80 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ..._visibleFolders.map(
-                      (folder) => GestureDetector(
+                      (folder) => PressableCard(
+                        borderRadius: BorderRadius.zero,
                         onSecondaryTapDown: (details) {
                           _showFolderContextMenu(
                               context, details.globalPosition, folder);
                         },
+                        onTap: _multiSelectMode
+                            ? () => _toggleFolderSelection(folder.id)
+                            : () => _openFolder(folder),
+                        onLongPress: _multiSelectMode
+                            ? null
+                            : () async {
+                                final action =
+                                    await showModalBottomSheet<String>(
+                                  context: context,
+                                  builder: (context) => SafeArea(
+                                    child: Wrap(
+                                      children: [
+                                        ListTile(
+                                          leading:
+                                              const Icon(Icons.auto_stories),
+                                          title: const Text('Open in Yomikiru'),
+                                          onTap: () => Navigator.pop(
+                                              context, 'yomikiru'),
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(Icons.folder_zip),
+                                          title: const Text('Export as ZIP'),
+                                          subtitle: const Text(
+                                              'Export this folder only'),
+                                          onTap: () => Navigator.pop(
+                                              context, 'export_zip'),
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(
+                                              Icons.drive_file_move_outline),
+                                          title: const Text('Move'),
+                                          onTap: () =>
+                                              Navigator.pop(context, 'move'),
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(
+                                              Icons.drive_file_rename_outline),
+                                          title: const Text('Rename'),
+                                          onTap: () =>
+                                              Navigator.pop(context, 'rename'),
+                                        ),
+                                        ListTile(
+                                          leading:
+                                              const Icon(Icons.delete_outline),
+                                          title: const Text('Delete'),
+                                          onTap: () =>
+                                              Navigator.pop(context, 'delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                                if (action == 'yomikiru') {
+                                  await _openFolderInYomikiru(folder);
+                                }
+                                if (action == 'export_zip') {
+                                  await _exportFolderAsZip(folder);
+                                }
+                                if (action == 'move') {
+                                  await _moveFolder(folder);
+                                }
+                                if (action == 'rename') {
+                                  await _renameFolder(folder);
+                                }
+                                if (action == 'delete') {
+                                  await _deleteFolder(folder);
+                                }
+                              },
                         child: ListTile(
                           leading: _multiSelectMode
                               ? RepaintBoundary(
@@ -2003,112 +2073,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 )
                               : const Icon(Icons.folder),
                           title: Text(folder.name),
-                          onTap: _multiSelectMode
-                              ? () => _toggleFolderSelection(folder.id)
-                              : () => _openFolder(folder),
-                          onLongPress: _multiSelectMode
-                              ? null
-                              : () async {
-                                  final action =
-                                      await showModalBottomSheet<String>(
-                                    context: context,
-                                    builder: (context) => SafeArea(
-                                      child: Wrap(
-                                        children: [
-                                          ListTile(
-                                            leading:
-                                                const Icon(Icons.auto_stories),
-                                            title:
-                                                const Text('Open in Yomikiru'),
-                                            onTap: () => Navigator.pop(
-                                                context, 'yomikiru'),
-                                          ),
-                                          ListTile(
-                                            leading:
-                                                const Icon(Icons.folder_zip),
-                                            title: const Text('Export as ZIP'),
-                                            subtitle: const Text(
-                                                'Export this folder only'),
-                                            onTap: () => Navigator.pop(
-                                                context, 'export_zip'),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(
-                                                Icons.drive_file_move_outline),
-                                            title: const Text('Move'),
-                                            onTap: () =>
-                                                Navigator.pop(context, 'move'),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(Icons
-                                                .drive_file_rename_outline),
-                                            title: const Text('Rename'),
-                                            onTap: () => Navigator.pop(
-                                                context, 'rename'),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(
-                                                Icons.delete_outline),
-                                            title: const Text('Delete'),
-                                            onTap: () => Navigator.pop(
-                                                context, 'delete'),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                  if (action == 'yomikiru') {
-                                    await _openFolderInYomikiru(folder);
-                                  }
-                                  if (action == 'export_zip') {
-                                    await _exportFolderAsZip(folder);
-                                  }
-                                  if (action == 'move') {
-                                    await _moveFolder(folder);
-                                  }
-                                  if (action == 'rename') {
-                                    await _renameFolder(folder);
-                                  }
-                                  if (action == 'delete') {
-                                    await _deleteFolder(folder);
-                                  }
-                                },
                         ),
                       ),
                     ),
                     if (!_gridView)
                       ..._visibleFiles.map(
-                        (file) => ListTile(
-                          leading: _multiSelectMode
-                              ? RepaintBoundary(
-                                  // Strategic RepaintBoundary for checkbox animation
-                                  child: Checkbox(
-                                    value: _selectedFileIds.contains(file.id),
-                                    onChanged: (_) =>
-                                        _toggleFileSelection(file.id),
-                                  ),
-                                )
-                              : isImageFileName(file.originalName)
-                                  ? Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primaryContainer,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        Icons.image,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onPrimaryContainer,
-                                      ),
-                                    )
-                                  : const Icon(Icons.insert_drive_file),
-                          title: Text(file.originalName),
-                          subtitle: Text(
-                              '${formatBytes(file.byteSize)} • ${formatLocalDateTime(file.createdAt)}'),
+                        (file) => PressableCard(
+                          borderRadius: BorderRadius.circular(8),
                           onTap: _multiSelectMode
                               ? () => _toggleFileSelection(file.id)
                               : () => _openFile(file),
@@ -2156,6 +2127,39 @@ class _HomeScreenState extends State<HomeScreen> {
                                     await _deleteFile(file);
                                   }
                                 },
+                          child: ListTile(
+                            leading: _multiSelectMode
+                                ? RepaintBoundary(
+                                    // Strategic RepaintBoundary for checkbox animation
+                                    child: Checkbox(
+                                      value: _selectedFileIds.contains(file.id),
+                                      onChanged: (_) =>
+                                          _toggleFileSelection(file.id),
+                                    ),
+                                  )
+                                : isImageFileName(file.originalName)
+                                    ? Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primaryContainer,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          Icons.image,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onPrimaryContainer,
+                                        ),
+                                      )
+                                    : const Icon(Icons.insert_drive_file),
+                            title: Text(file.originalName),
+                            subtitle: Text(
+                                '${formatBytes(file.byteSize)} • ${formatLocalDateTime(file.createdAt)}'),
+                          ),
                         ),
                       )
                     else
@@ -2176,7 +2180,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemBuilder: (context, i) {
                             final file = _visibleFiles[i];
                             final isImg = isImageFileName(file.originalName);
-                            return InkWell(
+                            return PressableCard(
                               borderRadius: BorderRadius.circular(12),
                               onTap: _multiSelectMode
                                   ? () => _toggleFileSelection(file.id)

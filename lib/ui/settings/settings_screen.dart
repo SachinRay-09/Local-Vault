@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -26,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _blockScreenshots = false;
 
   final _limitMbController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _busy = true;
 
   @override
@@ -37,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _limitMbController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -126,196 +129,223 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final stats = _stats;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: _busy
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Vault',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            if (stats != null) ...[
-                              Text('Folders: ${stats.folderCount}'),
-                              Text('Files: ${stats.fileCount}'),
-                              Text('Used: ${_fmtBytes(stats.totalBytes)}'),
-                              if (_maxBytes != null) ...[
-                                const SizedBox(height: 8),
-                                LinearProgressIndicator(
-                                  value: (stats.totalBytes / _maxBytes!)
-                                      .clamp(0.0, 1.0),
-                                ),
-                              ],
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Security',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            ListTile(
-                              leading: const Icon(Icons.key_outlined),
-                              title: const Text('Change Password'),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        const ChangePasswordScreen()),
+      body: _busy
+          ? const Center(child: CircularProgressIndicator())
+          : Scrollbar(
+              controller: _scrollController,
+              thumbVisibility:
+                  Platform.isWindows || Platform.isMacOS || Platform.isLinux,
+              trackVisibility:
+                  Platform.isWindows || Platform.isMacOS || Platform.isLinux,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Vault',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  const SizedBox(height: 8),
+                                  if (stats != null) ...[
+                                    Text('Folders: ${stats.folderCount}'),
+                                    Text('Files: ${stats.fileCount}'),
+                                    Text(
+                                        'Used: ${_fmtBytes(stats.totalBytes)}'),
+                                    if (_maxBytes != null) ...[
+                                      const SizedBox(height: 8),
+                                      LinearProgressIndicator(
+                                        value: (stats.totalBytes / _maxBytes!)
+                                            .clamp(0.0, 1.0),
+                                      ),
+                                    ],
+                                  ],
+                                ],
                               ),
                             ),
-                            SwitchListTile(
-                              secondary: const Icon(Icons.screenshot_outlined),
-                              title: const Text('Block screenshots'),
-                              subtitle: const Text(
-                                'Blocks screenshots and recent-apps preview while the vault is open',
-                              ),
-                              value: _blockScreenshots,
-                              onChanged: (val) async {
-                                setState(() => _blockScreenshots = val);
-                                final s = await _settings.getOrCreate();
-                                s.blockScreenshots = val;
-                                await _settings.saveSettings(s);
-                                unawaited(
-                                    WindowSecurityService.setSecureFlag(val));
-                              },
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: _lockVault,
-                              icon: const Icon(Icons.lock_outline),
-                              label: const Text('Lock vault'),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Forgotten password = permanent data loss — '
-                              'store it safely.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Appearance',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            const Text(
-                                'Follow the device theme, or lock to light or dark.'),
-                            const SizedBox(height: 12),
-                            SegmentedButton<ThemeMode>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: ThemeMode.system,
-                                  label: Text('System'),
-                                  icon: Icon(Icons.brightness_auto),
-                                ),
-                                ButtonSegment(
-                                  value: ThemeMode.light,
-                                  label: Text('Light'),
-                                  icon: Icon(Icons.light_mode),
-                                ),
-                                ButtonSegment(
-                                  value: ThemeMode.dark,
-                                  label: Text('Dark'),
-                                  icon: Icon(Icons.dark_mode),
-                                ),
-                              ],
-                              selected: {_currentThemeMode},
-                              onSelectionChanged: (newVal) async {
-                                final mode = newVal.first;
-                                setState(() => _currentThemeMode = mode);
-                                await _settings
-                                    .setThemeMode(_themeModeToString(mode));
-                                VaultApp.themeMode.value = mode;
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Maintenance',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: _clearTemp,
-                              icon:
-                                  const Icon(Icons.cleaning_services_outlined),
-                              label: const Text('Clear temp cache'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Storage limit',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: _limitMbController,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: 'Max storage (MB)',
-                                helperText: 'Leave empty for unlimited',
-                                suffixText: _maxBytes == null
-                                    ? null
-                                    : _fmtBytes(_maxBytes!),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Security',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  const SizedBox(height: 8),
+                                  ListTile(
+                                    leading: const Icon(Icons.key_outlined),
+                                    title: const Text('Change Password'),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              const ChangePasswordScreen()),
+                                    ),
+                                  ),
+                                  SwitchListTile(
+                                    secondary:
+                                        const Icon(Icons.screenshot_outlined),
+                                    title: const Text('Block screenshots'),
+                                    subtitle: const Text(
+                                      'Blocks screenshots and recent-apps preview while the vault is open',
+                                    ),
+                                    value: _blockScreenshots,
+                                    onChanged: (val) async {
+                                      setState(() => _blockScreenshots = val);
+                                      final s = await _settings.getOrCreate();
+                                      s.blockScreenshots = val;
+                                      await _settings.saveSettings(s);
+                                      unawaited(
+                                          WindowSecurityService.setSecureFlag(
+                                              val));
+                                    },
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: _lockVault,
+                                    icon: const Icon(Icons.lock_outline),
+                                    label: const Text('Lock vault'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Forgotten password = permanent data loss — '
+                                    'store it safely.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: FilledButton(
-                                  onPressed: _saveLimit,
-                                  child: const Text('Save')),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Appearance',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                      'Follow the device theme, or lock to light or dark.'),
+                                  const SizedBox(height: 12),
+                                  SegmentedButton<ThemeMode>(
+                                    segments: const [
+                                      ButtonSegment(
+                                        value: ThemeMode.system,
+                                        label: Text('System'),
+                                        icon: Icon(Icons.brightness_auto),
+                                      ),
+                                      ButtonSegment(
+                                        value: ThemeMode.light,
+                                        label: Text('Light'),
+                                        icon: Icon(Icons.light_mode),
+                                      ),
+                                      ButtonSegment(
+                                        value: ThemeMode.dark,
+                                        label: Text('Dark'),
+                                        icon: Icon(Icons.dark_mode),
+                                      ),
+                                    ],
+                                    selected: {_currentThemeMode},
+                                    onSelectionChanged: (newVal) async {
+                                      final mode = newVal.first;
+                                      setState(() => _currentThemeMode = mode);
+                                      await _settings.setThemeMode(
+                                          _themeModeToString(mode));
+                                      VaultApp.themeMode.value = mode;
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Maintenance',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: _clearTemp,
+                                    icon: const Icon(
+                                        Icons.cleaning_services_outlined),
+                                    label: const Text('Clear temp cache'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Storage limit',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: _limitMbController,
+                                    keyboardType: TextInputType.number,
+                                    decoration: InputDecoration(
+                                      labelText: 'Max storage (MB)',
+                                      helperText: 'Leave empty for unlimited',
+                                      suffixText: _maxBytes == null
+                                          ? null
+                                          : _fmtBytes(_maxBytes!),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: FilledButton(
+                                        onPressed: _saveLimit,
+                                        child: const Text('Save')),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
-        ),
-      ),
+              ),
+            ),
     );
   }
 }
