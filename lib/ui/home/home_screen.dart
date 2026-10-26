@@ -2507,14 +2507,33 @@ class _ExportCoordinatorProgressDialog extends StatefulWidget {
 
 class _ExportCoordinatorProgressDialogState
     extends State<_ExportCoordinatorProgressDialog> {
-  int _completedFiles = 0;
-  int _totalFiles = 0;
+  int _latestCompleted = 0;
+  int _latestTotal = 0;
+  int _latestProcessedBytes = 0;
+  int _latestTotalBytes = 0;
   bool _isComplete = false;
+  bool _pendingRebuild = false;
 
   @override
   void initState() {
     super.initState();
     _startExport();
+  }
+
+  // Coalesce progress events into at most one rebuild per frame so a burst of
+  // ExportProgress yields does not thrash the UI isolate (eliminates the
+  // spinner jitter that prompted this task).
+  void _onProgress(ExportProgress p) {
+    _latestCompleted = p.completedFiles;
+    _latestTotal = p.totalFiles;
+    _latestProcessedBytes = p.processedBytes;
+    _latestTotalBytes = p.totalBytes;
+    if (_pendingRebuild) return;
+    _pendingRebuild = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+      _pendingRebuild = false;
+    });
   }
 
   Future<void> _startExport() async {
@@ -2524,10 +2543,7 @@ class _ExportCoordinatorProgressDialogState
         widget.outputZipPath,
       )) {
         if (!mounted) break;
-        setState(() {
-          _completedFiles = progress.completedFiles;
-          _totalFiles = progress.totalFiles;
-        });
+        _onProgress(progress);
       }
       if (mounted) {
         setState(() => _isComplete = true);
@@ -2541,9 +2557,13 @@ class _ExportCoordinatorProgressDialogState
     }
   }
 
+  static String _fmtMb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
+
   @override
   Widget build(BuildContext context) {
-    final fraction = _totalFiles > 0 ? _completedFiles / _totalFiles : null;
+    final fraction = _latestTotal > 0
+        ? (_latestCompleted / _latestTotal).clamp(0.0, 1.0)
+        : null;
     return PopScope(
       canPop: _isComplete,
       child: AlertDialog(
@@ -2559,9 +2579,17 @@ class _ExportCoordinatorProgressDialogState
             const SizedBox(height: 12),
             LinearProgressIndicator(value: fraction),
             const SizedBox(height: 4),
-            if (_totalFiles > 0)
-              Text('$_completedFiles / $_totalFiles files',
+            if (_latestTotal > 0)
+              Text('$_latestCompleted / $_latestTotal files',
                   style: const TextStyle(fontSize: 12)),
+            if (_latestTotalBytes > 0)
+              Text(
+                '${_fmtMb(_latestProcessedBytes)} / ${_fmtMb(_latestTotalBytes)} MB',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
           ],
         ),
         actions: _isComplete

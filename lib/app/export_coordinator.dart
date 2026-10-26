@@ -196,7 +196,8 @@ class ExportCoordinator {
               : '$folderRel/${file.originalName}';
 
           // Add to ZIP.
-          await writer.addFile(entryName, tempPath);
+          await writer.addFile(entryName, tempPath,
+              store: _isMediaExtension(entryName));
         } finally {
           // Delete the temp plaintext file regardless of success or failure.
           try {
@@ -275,5 +276,23 @@ class ExportCoordinator {
     return List<int>.generate(bytes, (_) => r.nextInt(256))
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
+  }
+
+  /// True for already-compressed media extensions that should be stored with
+  /// STORE (level 0) instead of recompressed. Mirrors
+  /// [ArchiveWriter._kMediaExtensions].
+  static bool _isMediaExtension(String entryName) {
+    const media = {
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.gif',
+      '.avif',
+      '.mp4',
+      '.mkv',
+      '.avi',
+    };
+    return media.contains(path.extension(entryName).toLowerCase());
   }
 }
