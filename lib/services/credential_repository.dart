@@ -97,6 +97,13 @@ class CredentialRepository {
     await _storage.writeString(_kRollbackKey, base64Encode(legacyMasterKey));
   }
 
+  /// Returns true if the rollback marker key is present in secure storage.
+  /// Used on startup to detect an interrupted password change (Phase 5/6).
+  Future<bool> hasRollbackMarker() async {
+    final val = await _storage.readString(_kRollbackKey);
+    return val != null && val.isNotEmpty;
+  }
+
   /// Deletes the rollback marker after a successful migration or password
   /// change.
   Future<void> deleteRollbackMarker() async {

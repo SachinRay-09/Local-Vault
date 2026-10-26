@@ -109,6 +109,16 @@ class JobRepository {
     });
   }
 
+  /// Returns all completed [OperationJobItem] rows for [jobId].
+  /// Used by ZIP crash-resume to determine which entries were already committed.
+  Future<List<OperationJobItem>> findCompletedItems(int jobId) async {
+    return _isar.operationJobItems
+        .filter()
+        .jobIdEqualTo(jobId)
+        .stateEqualTo(JobItemState.completed)
+        .findAll();
+  }
+
   /// Deletes the job identified by [id] and all of its associated items.
   Future<void> deleteJob(int id) async {
     final itemIds = await _isar.operationJobItems
