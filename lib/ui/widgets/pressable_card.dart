@@ -77,10 +77,16 @@ class _PressableCardState extends State<PressableCard> {
                   duration: const Duration(milliseconds: 150),
                   curve: Curves.easeOut,
                   decoration: BoxDecoration(
-                    // M3 state-layer: onSurface at 8% for hover, 0% for rest.
-                    // Same color space on both ends => no dark-flash artifact.
+                    // M3 state-layer: onSurface at 3% (light) / 8% (dark) for hover, 0% for rest.
+                    // Light mode cards now use surfaceContainerLowest (near-white) so
+                    // even 3% reads cleanly; dark mode keeps 8% (near-white tint on
+                    // dark surface = gentle bloom). Same color space => no dark-flash.
                     color: isHovered
-                        ? colorScheme.onSurface.withOpacity(0.08)
+                        ? colorScheme.onSurface.withOpacity(
+                            colorScheme.brightness == Brightness.dark
+                                ? 0.08
+                                : 0.03,
+                          )
                         : colorScheme.onSurface.withOpacity(0.0),
                     borderRadius: widget.borderRadius,
                     boxShadow: isHovered

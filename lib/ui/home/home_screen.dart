@@ -478,159 +478,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Save all vault content to local gallery (unencrypted ZIP)
-  /// Windows: User chooses location
-  /// Android: Saves to Downloads folder
-  Future<void> _saveToLocalGallery() async {
-    try {
-      debugPrint('Starting Save to Local Gallery...');
-
-      if (!mounted) return;
-
-      String? outPath;
-
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        // Desktop: Let user choose location
-        outPath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save to Local Gallery',
-          fileName:
-              'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip',
-          type: FileType.custom,
-          allowedExtensions: ['zip'],
-        );
-
-        if (outPath == null) {
-          debugPrint('User cancelled file picker');
-          return; // User cancelled
-        }
-      } else {
-        // Android: Save to Downloads folder
-        const downloadsPath = '/storage/emulated/0/Download';
-        final fileName =
-            'vault_gallery_${DateTime.now().millisecondsSinceEpoch}.zip';
-        outPath = '$downloadsPath/$fileName';
-        debugPrint('Android: Saving to $outPath');
-      }
-
-      if (!mounted) return;
-
-      // Show progress dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => _SaveToGalleryProgressDialog(
-          importExport: _importExport,
-          outputZipPath: outPath!,
-          onComplete: (result) {
-            Navigator.pop(context); // Close progress dialog
-            _showGallerySaveSuccessDialog(result);
-          },
-          onError: (error) {
-            Navigator.pop(context); // Close progress dialog
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Save failed: $error')),
-              );
-            }
-          },
-        ),
-      );
-    } catch (e) {
-      debugPrint('Failed to start save to gallery: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start save: $e')),
-        );
-      }
-    }
-  }
-
-  /// Show gallery save success dialog
-  void _showGallerySaveSuccessDialog(ExportAllResult result) {
-    if (!mounted) return;
-
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Saved to Local Gallery'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-                'All vault content has been saved as an unencrypted ZIP file.'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                      SizedBox(width: 8),
-                      Text('File Location:',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    result.zipPath,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.warning_amber, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
-                      Text('Not Encrypted:',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'This ZIP file is NOT password protected. Anyone can open it with any ZIP tool.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Show export success dialog
   void _showExportSuccessDialog(ExportAllResult result, bool usePassword) {
     if (!mounted) return;
@@ -1902,7 +1749,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (value == 'import') await _importZip();
                       if (value == 'import_folder') await _importFolder();
                       if (value == 'export') await _exportAll();
-                      if (value == 'save_gallery') await _saveToLocalGallery();
                       if (value == 'lock') {
                         if (!context.mounted) return;
                         Navigator.of(context).pushAndRemoveUntil(
@@ -1935,9 +1781,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           value: 'import_folder', child: Text('Import Folder')),
                       PopupMenuItem(value: 'import', child: Text('Import ZIP')),
                       PopupMenuItem(value: 'export', child: Text('Export')),
-                      PopupMenuItem(
-                          value: 'save_gallery',
-                          child: Text('Save to Local Gallery')),
                       PopupMenuDivider(),
                       PopupMenuItem(
                           value: 'sort_name', child: Text('Sort: Name')),
@@ -2240,8 +2083,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                               .primaryContainer
                                               .withOpacity(0.3)
                                           : Theme.of(context)
-                                              .colorScheme
-                                              .surface,
+                                                      .colorScheme
+                                                      .brightness ==
+                                                  Brightness.light
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .surfaceContainerLowest
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .surface,
                                       borderRadius: BorderRadius.circular(12),
                                       border: _multiSelectMode &&
                                               _selectedFileIds.contains(file.id)
@@ -2264,8 +2114,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   ? Container(
                                                       decoration: BoxDecoration(
                                                         color: Theme.of(context)
-                                                            .colorScheme
-                                                            .primaryContainer,
+                                                                    .colorScheme
+                                                                    .brightness ==
+                                                                Brightness.light
+                                                            ? Theme.of(context)
+                                                                .colorScheme
+                                                                .surfaceContainerHigh
+                                                            : Theme.of(context)
+                                                                .colorScheme
+                                                                .primaryContainer,
                                                         borderRadius:
                                                             BorderRadius
                                                                 .circular(10),
@@ -2274,8 +2131,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         Icons.image,
                                                         size: 40,
                                                         color: Theme.of(context)
-                                                            .colorScheme
-                                                            .onPrimaryContainer,
+                                                                    .colorScheme
+                                                                    .brightness ==
+                                                                Brightness.light
+                                                            ? Theme.of(context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant
+                                                            : Theme.of(context)
+                                                                .colorScheme
+                                                                .onPrimaryContainer,
                                                       ),
                                                     )
                                                   : const Icon(
@@ -2744,138 +2608,6 @@ class _ExportAllProgressDialogState extends State<_ExportAllProgressDialog> {
                 const SizedBox(height: 16),
                 Text(
                   'This may take a few minutes depending on vault size...',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ] else ...[
-                const Center(
-                    child: Icon(Icons.check_circle,
-                        color: Colors.green, size: 48)),
-                const SizedBox(height: 16),
-                Text(_currentStatus),
-              ],
-            ],
-          ),
-        ),
-        actions: _isComplete
-            ? [
-                FilledButton(
-                  onPressed: () {
-                    // Dialog will be closed by onComplete callback
-                  },
-                  child: const Text('Done'),
-                ),
-              ]
-            : null,
-      ),
-    );
-  }
-}
-
-/// Save to Gallery progress dialog (unencrypted ZIP export)
-class _SaveToGalleryProgressDialog extends StatefulWidget {
-  const _SaveToGalleryProgressDialog({
-    required this.importExport,
-    required this.outputZipPath,
-    required this.onComplete,
-    required this.onError,
-  });
-
-  final ImportExportService importExport;
-  final String outputZipPath;
-  final Function(ExportAllResult) onComplete;
-  final Function(String) onError;
-
-  @override
-  State<_SaveToGalleryProgressDialog> createState() =>
-      _SaveToGalleryProgressDialogState();
-}
-
-class _SaveToGalleryProgressDialogState
-    extends State<_SaveToGalleryProgressDialog> {
-  String _currentStatus = 'Preparing to save...';
-  bool _isComplete = false;
-  DateTime? _startTime;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTime = DateTime.now();
-    _startSave();
-  }
-
-  Future<void> _startSave() async {
-    try {
-      setState(() => _currentStatus = 'Decrypting files...');
-      await Future.delayed(const Duration(milliseconds: 100)); // Let UI update
-
-      // Export without password (unencrypted ZIP)
-      final result = await widget.importExport.exportAllToZip(
-        outputZipPath: widget.outputZipPath,
-        usePassword: false, // No password = unencrypted
-      );
-
-      if (mounted) {
-        setState(() {
-          _isComplete = true;
-          _currentStatus = 'Saved successfully!';
-        });
-        widget.onComplete(result);
-      }
-    } catch (e) {
-      debugPrint('Save to gallery error: $e');
-      if (mounted) {
-        setState(() => _isComplete = true);
-        widget.onError(e.toString());
-      }
-    }
-  }
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    } else {
-      return '${seconds}s';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Calculate elapsed time
-    String elapsedTime = '';
-    if (_startTime != null) {
-      final elapsed = DateTime.now().difference(_startTime!);
-      elapsedTime = 'Elapsed: ${_formatDuration(elapsed)}';
-    }
-
-    return PopScope(
-      canPop: _isComplete, // Prevent closing during save
-      child: AlertDialog(
-        title: Text(_isComplete ? 'Save Complete' : 'Saving to Local Gallery'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (!_isComplete) ...[
-                const Center(child: CircularProgressIndicator()),
-                const SizedBox(height: 24),
-                Text(_currentStatus, style: const TextStyle(fontSize: 14)),
-                if (elapsedTime.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(elapsedTime,
-                      style: TextStyle(
-                          fontSize: 12,
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant)),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  'Creating unencrypted ZIP file...',
                   style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.onSurfaceVariant),

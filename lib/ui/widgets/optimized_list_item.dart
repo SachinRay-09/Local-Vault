@@ -23,14 +23,16 @@ class OptimizedFolderItem extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final VoidCallback onToggleSelection;
-  final Widget Function(VaultFolder folder, VoidCallback onClose) contextMenuBuilder;
+  final Widget Function(VaultFolder folder, VoidCallback onClose)
+      contextMenuBuilder;
 
   @override
   Widget build(BuildContext context) {
     return ContextMenuRegion(
-      contextMenuBuilder: (context, offset, onClose) => contextMenuBuilder(folder, onClose),
+      contextMenuBuilder: (context, offset, onClose) =>
+          contextMenuBuilder(folder, onClose),
       child: ListTile(
-        leading: multiSelectMode 
+        leading: multiSelectMode
             ? Checkbox(
                 value: isSelected,
                 onChanged: (_) => onToggleSelection(),
@@ -66,6 +68,13 @@ class OptimizedFileItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    // Light mode icon box: neutral surfaceContainerHigh instead of the
+    // saturated primaryContainer, which reads heavy against a near-white card.
+    final iconBoxBg = isLight ? cs.surfaceContainerHigh : cs.primaryContainer;
+    final iconBoxFg = isLight ? cs.onSurfaceVariant : cs.onPrimaryContainer;
+
     return ListTile(
       leading: multiSelectMode
           ? Checkbox(
@@ -77,17 +86,18 @@ class OptimizedFileItem extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
+                    color: iconBoxBg,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
                     Icons.image,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    color: iconBoxFg,
                   ),
                 )
               : const Icon(Icons.insert_drive_file),
       title: Text(file.originalName),
-      subtitle: Text('${formatBytes(file.byteSize)} • ${formatLocalDateTime(file.createdAt)}'),
+      subtitle: Text(
+          '${formatBytes(file.byteSize)} • ${formatLocalDateTime(file.createdAt)}'),
       onTap: multiSelectMode ? onToggleSelection : onTap,
       onLongPress: multiSelectMode ? null : onLongPress,
     );
@@ -116,6 +126,12 @@ class OptimizedGridFileItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final cardBg = isLight ? cs.surfaceContainerLowest : cs.surface;
+    final iconBoxBg = isLight ? cs.surfaceContainerHigh : cs.primaryContainer;
+    final iconBoxFg = isLight ? cs.onSurfaceVariant : cs.onPrimaryContainer;
+
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: multiSelectMode ? onToggleSelection : onTap,
@@ -125,11 +141,11 @@ class OptimizedGridFileItem extends StatelessWidget {
           Ink(
             decoration: BoxDecoration(
               color: multiSelectMode && isSelected
-                  ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
-                  : Theme.of(context).colorScheme.surface,
+                  ? cs.primaryContainer.withOpacity(0.3)
+                  : cardBg,
               borderRadius: BorderRadius.circular(12),
               border: multiSelectMode && isSelected
-                  ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)
+                  ? Border.all(color: cs.primary, width: 2)
                   : null,
             ),
             child: Padding(
@@ -142,16 +158,17 @@ class OptimizedGridFileItem extends StatelessWidget {
                       child: isImage
                           ? Container(
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primaryContainer,
+                                color: iconBoxBg,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
                                 Icons.image,
                                 size: 40,
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                color: iconBoxFg,
                               ),
                             )
-                          : const Icon(Icons.insert_drive_file_outlined, size: 40),
+                          : const Icon(Icons.insert_drive_file_outlined,
+                              size: 40),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -174,19 +191,13 @@ class OptimizedGridFileItem extends StatelessWidget {
               right: 8,
               child: Container(
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.surface,
+                  color: isSelected ? cs.primary : cardBg,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                  border: Border.all(color: cs.outline),
                 ),
                 child: Icon(
                   isSelected ? Icons.check : null,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.onPrimary
-                      : null,
+                  color: isSelected ? cs.onPrimary : null,
                   size: 20,
                 ),
               ),
