@@ -1,6 +1,6 @@
 # User Guide - Local Vault
 
-Complete guide for using Local Vault to securely store and manage your private media.
+Complete guide for using Local Vault v3.0.0 to securely store and manage your private media.
 
 ---
 
@@ -11,6 +11,7 @@ Complete guide for using Local Vault to securely store and manage your private m
 - [Advanced Features](#advanced-features)
 - [Manga Reader Integration](#manga-reader-integration)
 - [Import & Export](#import--export)
+- [Settings](#settings)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
 
@@ -41,19 +42,19 @@ Complete guide for using Local Vault to securely store and manage your private m
 
 - Minimum 8 characters
 - Mix of uppercase, lowercase, numbers, symbols
-- **NO PASSWORD RECOVERY** - If you forget it, your data is lost forever
+- **NO PASSWORD RECOVERY** — if you forget it, your data is permanently inaccessible
 - This is by design for maximum security
 
-**Your password is cryptographically required to access your vault.** The encryption key is wrapped by a key derived from your password via PBKDF2-HMAC-SHA256 (200,000 iterations). Forgetting your password means permanent loss of access to your encrypted files.
+**Your password is cryptographically required to access your vault.** The vault's Data Encryption Key (DEK) is wrapped by a Key Encryption Key derived from your password via PBKDF2-HMAC-SHA256 (200,000 iterations). Forgetting your password means permanent loss of access.
 
-**Password Recovery:** There is no backdoor. Security questions reset the app lock only — they do NOT recover your encrypted files. Write your password down and store it somewhere safe.
+**Export a recovery key** (Settings → Security → Export Recovery Key) before you rely on this vault for important data.
 
 **Example Strong Password**: `MyM@nga2024!Vault`
 
 #### 3. Grant Permissions (Android)
 
-- Storage Access: Required for importing files
-- Optional: Disable internet access in app settings for extra privacy
+- Storage Access: required for importing files
+- Optional: disable internet access in device app settings for extra privacy
 
 ---
 
@@ -74,7 +75,7 @@ Complete guide for using Local Vault to securely store and manage your private m
 
 **Tips:**
 - Use numeric prefixes for ordering: "01 - Chapter 1", "02 - Chapter 2"
-- Folders now sort naturally: 1, 2, 10 (not 1, 10, 2)
+- Folders sort naturally: 1, 2, 10 (not 1, 10, 2)
 
 ### Importing Files
 
@@ -84,7 +85,7 @@ Complete guide for using Local Vault to securely store and manage your private m
 1. Menu → Import Folder
 2. Paste folder path (e.g., `D:\Manga\MyCollection`)
 3. Press Enter
-4. Wait for encryption progress (may take time for large folders)
+4. Wait for encryption progress
 
 **Android:**
 1. Menu → Import Folder
@@ -93,10 +94,11 @@ Complete guide for using Local Vault to securely store and manage your private m
 4. Wait for encryption progress
 
 **What Happens:**
-- All files in folder are encrypted
+- All files in folder are encrypted one at a time (streaming pipeline)
 - Folder structure is preserved
 - Original files remain untouched
 - Progress shown in real-time
+- If import is interrupted, it resumes from the last committed file on next attempt
 
 #### Import ZIP
 
@@ -109,7 +111,7 @@ Complete guide for using Local Vault to securely store and manage your private m
 **Supported:**
 - Plain ZIP files
 - Password-protected ZIP files
-- Large ZIP files (1GB+, but takes time)
+- Large ZIP files (1 GB+)
 
 ### Organizing Files
 
@@ -129,11 +131,9 @@ Complete guide for using Local Vault to securely store and manage your private m
 1. Right-click or long-press on folder
 2. Select "Delete"
 3. Confirm deletion
-4. **WARNING**: This is permanent!
+4. **WARNING**: This is permanent and cannot be undone
 
 ### Multi-Select Operations
-
-**New in v2.5.2!**
 
 #### Select Multiple Folders
 1. Long-press on first folder (enters selection mode)
@@ -150,7 +150,6 @@ Complete guide for using Local Vault to securely store and manage your private m
 1. Select multiple folders
 2. Tap "Delete" icon in top bar
 3. Confirm deletion
-4. All selected folders deleted
 
 ### Searching
 
@@ -165,11 +164,9 @@ Complete guide for using Local Vault to securely store and manage your private m
 
 ### Natural Sorting
 
-Folders now sort correctly with numbers:
+Folders sort correctly with numbers automatically — no configuration needed:
 - Before: 1, 10, 2, 20, 3
 - After: 1, 2, 3, 10, 20
-
-Works automatically - no configuration needed!
 
 ### Viewing Files
 
@@ -182,13 +179,6 @@ Works automatically - no configuration needed!
 - Tap video to play
 - Hardware acceleration on Windows
 - Standard video player on Android
-
-### Tags (Coming Soon)
-
-Tag files for better organization:
-- Add multiple tags per file
-- Search by tags
-- Filter by tags
 
 ---
 
@@ -212,7 +202,7 @@ Tag files for better organization:
 1. Close Yomikiru
 2. In Local Vault, tap "Cleanup" button
 3. Or use "Clear Cache" to remove temp files
-4. **IMPORTANT**: Always cleanup to free space!
+4. **IMPORTANT**: Always cleanup — temp files are unencrypted!
 
 #### Manual Opening
 If auto-launch fails:
@@ -252,8 +242,8 @@ Menu → Manga Reader Settings → Set to:
 1. Right-click folder
 2. Select "Export as ZIP"
 3. Choose password protection:
-   - **With Password**: More secure, uses more memory (1.2GB+)
-   - **Without Password**: Faster, less memory (200MB)
+   - **With Password**: more secure, uses more memory
+   - **Without Password**: faster, less memory
 4. Select save location
 5. Wait for encryption and compression
 
@@ -268,27 +258,37 @@ Menu → Manga Reader Settings → Set to:
 2. Choose password protection
 3. Select save location
 4. Creates single ZIP of entire vault
-5. **WARNING**: May take long time for large vaults!
-
-### Save to Gallery (Android)
-
-1. Menu → Save to Local Gallery
-2. Creates unencrypted ZIP in Downloads folder
-3. **WARNING**: Files are NOT encrypted!
-4. Use only for temporary backup
 
 ### Transfer Between Devices
 
 **Windows → Android:**
-1. Export folder as ZIP (no password recommended)
+1. Export folder as ZIP on Windows (no password recommended for ease)
 2. Transfer ZIP to Android (USB, cloud, etc.)
 3. In Android app: Import ZIP
 4. Enter password if used
 
 **Android → Windows:**
-1. Use "Save to Gallery" to create ZIP
+1. Export as ZIP on Android via right-click / long-press → Export as ZIP
 2. Transfer ZIP to Windows
 3. In Windows app: Import ZIP
+
+---
+
+## Settings
+
+### Password
+
+Change your master password at: Settings → Security → Change Password.
+
+The app re-wraps your vault DEK under a new KEK — your stored files are not re-encrypted, only the key wrapper changes.
+
+### Theme
+
+Settings → Appearance → choose System / Light / Dark.
+
+### Screenshot Blocking (Android)
+
+Settings → Security → Block Screenshots — prevents the system screenshot tool and recent-apps thumbnail from capturing vault contents. Default is OFF.
 
 ---
 
@@ -298,82 +298,47 @@ Menu → Manga Reader Settings → Set to:
 
 #### "Import Taking Too Long"
 
-**Cause**: Encryption is CPU-intensive
-
-**Solution**:
-- Large files (1GB+) take 5-10 minutes
-- This is normal - app is encrypting your data
-- Don't close app during import
-- Use memory optimizer if needed
-
-**Expected Times:**
-- 100MB folder: 1-2 minutes
-- 500MB folder: 3-5 minutes
-- 1.5GB folder: 8-12 minutes
+Large imports are fast on modern hardware — see [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for real benchmark numbers. If an import seems stuck, don't close the app; it will resume from where it left off if interrupted.
 
 #### "Invalid Depfile" Warnings
 
-**Cause**: Flutter build cache issue
-
-**Solution**:
-- These warnings are harmless
-- Build will complete successfully
-- If build fails, run: `flutter clean`
+These warnings are harmless Flutter build cache messages. If a build fails, run `flutter clean`.
 
 #### "Out of Memory" During Export
 
-**Cause**: Password-protected ZIP uses more memory
-
-**Solution**:
-- Export without password (uses 200MB vs 1.2GB+)
+- Export without password (uses much less memory)
 - Close other apps
-- Use memory optimizer
 - Export smaller folders separately
 
 #### "Yomikiru/Mihon Not Launching"
 
-**Cause**: App not installed or not detected
-
-**Solution**:
-- Verify manga reader is installed
+- Verify the manga reader is installed
 - Check temp folder path in success dialog
-- Manually open manga reader
-- Navigate to temp folder path shown
+- Manually open the manga reader and navigate to the temp folder path shown
 
 #### "Can't Import ZIP"
 
-**Cause**: Various reasons
-
-**Solutions**:
-- Check ZIP is not corrupted
+- Check the ZIP is not corrupted
 - Try without password first
 - Ensure enough storage space
-- Try smaller ZIP files
 - Check file permissions (Android)
 
 #### "Forgot Password"
 
-**Cause**: No password recovery by design
-
-**Solution**:
-- **There is NO solution**
-- Your data is permanently locked
-- This is intentional for security
-- Always remember your password!
+There is no password recovery. Your data is permanently locked. This is intentional — no backdoor means true privacy. Always keep a note of your password in a safe place, and export a recovery key from Settings → Security.
 
 ### Performance Issues
 
 #### Slow Import
 - Close other apps
 - Restart device
-- Check available RAM
 - Import smaller batches
+- Check [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for expected times on tested hardware
 
 #### App Crashes
 - Update to latest version
 - Clear app cache
-- Reinstall app (vault data preserved)
-- Check device meets minimum requirements
+- Reinstall app (vault data is preserved)
 
 #### Storage Full
 - Delete unused folders
@@ -393,118 +358,93 @@ Menu → Manga Reader Settings → Set to:
    - Don't use common words or patterns
    - Don't share with anyone
 
-2. **Device Security**
+2. **Export a Recovery Key**
+   - Settings → Security → Export Recovery Key
+   - Store the recovery key somewhere physically safe
+
+3. **Device Security**
    - Use device lock screen (PIN/pattern/fingerprint)
    - Don't root/jailbreak device
    - Keep OS updated
-   - Use antivirus (optional)
 
-3. **Temp Folder Cleanup**
+4. **Temp Folder Cleanup**
    - Always cleanup after manga reading
-   - Temp files are unencrypted!
+   - Temp files are unencrypted
    - Use "Clear Cache" regularly
-   - Check temp folder location
 
-4. **Regular Backups**
-   - Export vault monthly
+5. **Regular Backups**
+   - Export vault periodically
    - Store backup on external drive
-   - Keep backup in safe location
-   - Test backup by importing
+   - Test backup by importing on another device
 
 ### Organization
 
 1. **Folder Structure**
    - Use clear, descriptive names
    - Group related content
-   - Use numeric prefixes for order
-   - Don't nest too deeply (3-4 levels max)
+   - Use numeric prefixes for order: "01 - Series Name", "02 - Series Name"
+   - Don't nest too deeply (3–4 levels max)
 
-2. **Naming Convention**
-   - "01 - Series Name"
-   - "02 - Series Name"
-   - Consistent format across vault
-
-3. **Tags** (when available)
-   - Tag by genre, artist, series
-   - Use consistent tag names
-   - Don't over-tag
-
-### Performance
-
-1. **Import Strategy**
-   - Import in batches (500MB at a time)
-   - Close other apps during import
-   - Use wired connection for large transfers
-   - Import during off-hours
-
-2. **Memory Management**
-   - Use memory optimizer for large operations
-   - Close app when not in use
-   - Clear cache regularly
-   - Restart device weekly
+2. **Import Strategy**
+   - Import in batches for very large libraries
+   - Close other apps during large imports
 
 3. **Storage Management**
    - Keep 20% storage free
    - Delete unused content
    - Export old content to external drive
-   - Monitor storage usage
 
 ---
 
 ## Keyboard Shortcuts (Windows)
 
-- `Ctrl + F` - Search
-- `Ctrl + N` - New Folder
-- `Ctrl + I` - Import Folder
-- `Delete` - Delete Selected
-- `F2` - Rename
-- `Ctrl + A` - Select All (in multi-select mode)
-- `Esc` - Exit multi-select mode
+- `Ctrl + F` — Search
+- `Ctrl + N` — New Folder
+- `Ctrl + I` — Import Folder
+- `Delete` — Delete Selected
+- `F2` — Rename
+- `Ctrl + A` — Select All (in multi-select mode)
+- `Esc` — Exit multi-select mode
 
 ---
 
 ## FAQ
 
-**Q: Is my data safe?**  
-A: Yes. AES-256 encryption is industry-standard and strong. Even if someone steals your device, they can't access your files without the password.
+**Q: Is my data safe?**
+A: Yes. AES-256-GCM is industry-standard encryption. Even if someone has your device storage, they cannot access your files without the password.
 
-**Q: Can I recover my password?**  
-A: No. This is by design for maximum security. No backdoors = true privacy.
+**Q: Can I recover my password?**
+A: No. This is by design for maximum security. Export a recovery key from Settings → Security before you rely on the vault for important data.
 
-**Q: Does this app use internet?**  
+**Q: Does this app use internet?**
 A: No. Everything is 100% local. You can disable internet access for the app.
 
-**Q: Can I sync between devices?**  
-A: No cloud sync. Use Export/Import to manually transfer.
+**Q: Can I sync between devices?**
+A: No cloud sync. Use Export/Import to manually transfer between devices.
 
-**Q: Why is import so slow?**  
-A: Encryption is CPU-intensive. Large files take time to encrypt securely.
-
-**Q: Is this app free?**  
+**Q: Is this app free?**
 A: One-time purchase. No subscriptions, no ads.
 
-**Q: Can I share files with others?**  
-A: Export as ZIP and share. Recipient needs Local Vault to decrypt.
+**Q: Can I share files with others?**
+A: Export as ZIP and share. The recipient needs Local Vault to decrypt password-protected exports.
 
-**Q: What happens if I uninstall?**  
-A: Vault data is deleted. Export backup first!
+**Q: What happens if I uninstall?**
+A: Vault data is deleted. Export a backup first!
 
-**Q: Can I use on iOS/Mac?**  
-A: Not yet. Currently Windows and Android only.
+**Q: Can I use on iOS/Mac?**
+A: Not currently. Windows and Android only.
 
-**Q: Is source code available?**  
-A: Check GitHub repository for details.
+**Q: Is source code available?**
+A: Check the GitHub repository for details.
 
 ---
 
 ## Support
 
-Need help?
-
 - **Email**: shadow99810@gmail.com
 - **GitHub Issues**: Report bugs and request features
-- **Documentation**: Check README.md and DEVELOPMENT.md
+- **Documentation**: [README.md](README.md), [DEVELOPMENT.md](DEVELOPMENT.md), [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
 
 ---
 
-**Enjoy your private media sanctuary! 🔒**
+**Keep your media private. 🔒**

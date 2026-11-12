@@ -1,6 +1,49 @@
 # Changelog
 
-All notable changes to Local Vault will be documented in this file.
+> This project was developed with the assistance of [Kiro](https://kiro.dev), an agentic AI IDE.
+
+All notable changes to Local Vault are documented here.
+
+## [3.0.0] - 2025-10-26
+
+Major architecture redesign across six phases. First public-ready release.
+
+### Security (Phase 5)
+- DEK envelope system: vault Data Encryption Key is now wrapped by a PBKDF2-derived Key Encryption Key (200,000 iterations, HMAC-SHA256). The DEK is never stored in plaintext.
+- Native AES-256-GCM replaces AES-256-CBC throughout
+- Key derivation runs off the UI thread (Isolate.run) — unlock never freezes the UI
+- Password change: re-wraps the DEK under a new KEK without re-encrypting vault data
+
+### Performance (Phases 1–4)
+- Native crypto backends: Windows BCrypt/CNG (AES-NI), Android javax.crypto via Conscrypt → BoringSSL → ARMv8 Crypto Extensions
+- Streaming import/export pipeline: one file in RAM at a time regardless of archive size
+- ZIP streaming: archive never loaded into RAM (InputFileStream / OutputFileStream)
+- Android 750 MB import: ~20–30 seconds (was 8–15 minutes on old PointyCastle path, 25–50× faster)
+- Windows 750 MB import: ~10–15 seconds
+- Export UI jitter fixed (Phase 6): setState coalescing prevents frame drops during ZIP encoding
+
+### UI / UX (Phase 6)
+- Dark / light / system theme toggle (Settings → Appearance)
+- Password change UI (Settings → Security → Change Password)
+- Screenshot blocking toggle (Settings → Security → Block Screenshots)
+- Crash recovery: interrupted imports resume from last committed file
+- Tap / hover animations refined for Windows and Android
+- Settings page redesigned: wider layout, full-page scroll
+- Removed "Save to Local Gallery" feature (Android)
+
+### Architecture (Phases 1–4)
+- CryptoBridge: platform channel to native AES-256-GCM (crypto_bridge.cpp / CryptoBridge.kt)
+- BlobStore: atomic partial-write commit (.partial → .bin rename)
+- ExportCoordinator / ImportCoordinator: streaming pipeline with progress events
+- Isar database with generated schema files
+- One-file-at-a-time pipeline keeps peak RAM well under 200 MB
+
+### Documentation
+- README rewritten with accurate crypto model and AI disclosure
+- GUIDE updated to current UI
+- docs/PERFORMANCE.md: real hardware benchmarks with test device specs
+
+---
 
 ## [2.5.2] - 2024-02-14
 
@@ -152,7 +195,6 @@ All notable changes to Local Vault will be documented in this file.
 - ZIP import (with/without password)
 - ZIP export (with/without password)
 - Export All functionality
-- Save to Local Gallery
 - Folder structure preservation
 
 ---
@@ -178,15 +220,9 @@ Format: `MAJOR.MINOR.PATCH+BUILD`
 
 ## Release Types
 
-- **Stable**: Production-ready releases (2.x.x)
-- **Beta**: Testing releases (2.x.x-beta.x)
-- **Alpha**: Development releases (2.x.x-alpha.x)
-
-## Support
-
-- **Current Version**: 2.5.0 (Full support)
-- **Previous Version**: 2.2.0 (Security updates only)
-- **Legacy Versions**: No longer supported
+- **Stable**: Production-ready releases (3.x.x)
+- **Beta**: Testing releases (3.x.x-beta.x)
+- **Alpha**: Development releases (3.x.x-alpha.x)
 
 ---
 

@@ -1,8 +1,9 @@
 name: local_vault
-description: "A new Flutter project."
+description: "Local Vault — AES-256 encrypted media vault for Windows and Android. Stores images, videos, and manga locally with no cloud sync."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+# Author: see README.md
 
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
@@ -16,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.5.2+6
+version: 3.0.0+1
 
 environment:
   sdk: ^3.2.6

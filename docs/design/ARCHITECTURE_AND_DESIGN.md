@@ -1,3 +1,7 @@
+> **Note**: This document describes the architecture as it existed before the Phase 1–6 redesign. Some sections describe the old PointyCastle-based crypto and older pipeline. For the current architecture (native AES, streaming pipeline, DEK envelope), see [PROCESS_BOTTLENECKS_AND_PHASE6_ARCHITECTURE.md](PROCESS_BOTTLENECKS_AND_PHASE6_ARCHITECTURE.md).
+
+---
+
 # Local Vault — Architecture & Design Analysis
 
 **App version analyzed:** 2.5.2+6  

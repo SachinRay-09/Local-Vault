@@ -1,195 +1,100 @@
-# Local Vault - Secure Encrypted Media Storage
+# Local Vault — Encrypted Media Vault
 
-[![Version](https://img.shields.io/badge/version-2.5.2-blue.svg)](https://github.com/yourusername/local_vault)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Android-lightgrey.svg)](https://github.com/yourusername/local_vault)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/SachinRay-09/Local-Vault.git)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Android-lightgrey.svg)](https://github.com/SachinRay-09/Local-Vault.git)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
-**Your Private Media Sanctuary with Strong AES-256 Encryption**
+AES-256-GCM encrypted local media vault for Windows and Android. No cloud, no tracking.
 
 ---
 
-## 🔐 What is Local Vault?
+## What it is
 
-Local Vault is a cross-platform encrypted storage application designed for **complete privacy**. Store your sensitive media (manga, photos, videos, documents) with AES-256 encryption that keeps everything local on your device - no cloud, no tracking, no data collection.
-
-### Why Local Vault?
-
-- 🔒 **True Privacy**: Everything stays on YOUR device with AES-256 encryption
-- 📱 **Manga Reader Integration**: Direct export to Tachiyomi/Mihon (Android) and Yomikiru (Windows)
-- ⚡ **Bulk Operations**: Import entire folders or ZIP archives in seconds
-- 🚫 **Zero Cloud**: No servers, no uploads, works 100% offline
-- 💰 **One-Time Purchase**: No subscriptions, no ads, lifetime access
+Local Vault is an encrypted local media vault for Windows and Android. It stores manga, photos, and videos on your device only — no cloud sync, no account, no network traffic. Files are encrypted as opaque blobs on disk and are only accessible with the correct password.
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### Security & Privacy
-- **AES-256 Encryption** - Industry-standard AES-256-GCM for all stored files
-- **Secure Key Storage** - PBKDF2-derived Key Encryption Key (200,000 iterations, HMAC-SHA256) wraps the vault DEK stored in the OS keystore. Your password is cryptographically required to decrypt your files.
-- **Password Protection** - Master password guards your vault
-- **No Cloud Sync** - Everything stays local, no internet required
-
-### File Management
-- **Folder Organization** - Create nested folders like a file manager
-- **Natural Sort** - Folders sort correctly (1, 2, 10 not 1, 10, 2)
-- **Multi-Select** - Select and move multiple folders/files at once
-- **Batch Move** - Move multiple folders in one operation with validation
-- **Advanced Search** - Find files instantly by name or tag
-- **Batch Import** - Import entire folders or ZIPs with progress tracking
-
-### Manga Reading
-- **Yomikiru Integration** (Windows) - One-click export to manga reader
-- **Mihon/Tachiyomi Integration** (Android) - Direct export support
-- **Progress Tracking** - Real-time decryption progress
-- **Cleanup Tools** - Easy temp folder cleanup after reading
-
-### Performance
-- **Optimized Memory** - ~300MB peak usage
-- **Fast Import** - 50-100 files per second
-- **Hardware Acceleration** - GPU-accelerated video on Windows
-- **60 FPS UI** - Smooth performance on mid-range devices
+- **AES-256-GCM encryption** for all stored files
+- **PBKDF2-derived Key Encryption Key** (200,000 iterations, HMAC-SHA256) wraps the vault DEK — your password is cryptographically required to access your data
+- **Native crypto backends**: Windows BCrypt/CNG (AES-NI hardware path), Android javax.crypto via Conscrypt → BoringSSL → ARMv8 Crypto Extensions
+- **Streaming import/export pipeline** — only one file in RAM at a time, the full archive is never loaded into memory
+- **Crash recovery** — interrupted imports resume from where they stopped
+- **Dark / light / system theme**
+- **Manga reader integration**: Yomikiru (Windows), Mihon/Tachiyomi (Android)
+- **Folder organisation, natural sort, multi-select, batch operations**
 
 ---
 
-## 📋 System Requirements
+## Performance Highlight
 
-### Windows
-- **OS**: Windows 10/11 (64-bit)
-- **CPU**: Intel Core i3 (4th gen) / AMD Ryzen 3 or equivalent
-- **RAM**: 4GB minimum (8GB recommended)
-- **Storage**: 500MB + space for your content
-
-### Android
-- **OS**: Android 8.0+ (API 26+)
-- **CPU**: ARM64 processor (Snapdragon 450 / Helio P22+)
-- **RAM**: 2GB minimum (4GB recommended)
-- **Storage**: 200MB + space for your content
+Import 750 MB / 224 images takes ~10–15 seconds on Windows (AES-NI) and ~20–30 seconds on Android (ARMv8 CE). See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for full benchmark details and test device specs.
 
 ---
 
-## 🚀 Quick Start
+## Screenshots
 
-### Installation
-
-**Windows:**
-```bash
-# Download LocalVault-x86_64-2.5.2+6-Installer.exe
-# Run installer and follow wizard
-```
-
-**Android:**
-```bash
-# Download app-release.apk
-# Enable "Install from Unknown Sources"
-# Install APK and grant storage permissions
-```
-
-### First Use
-
-1. **Create Master Password** - Choose a strong password (REMEMBER IT!)
-2. **Import Files** - Menu → Import Folder or Import ZIP
-3. **Organize** - Create folders, add tags, search
-4. **Access Anytime** - Enter password to unlock vault
+Screenshots coming soon.
 
 ---
 
-## 📖 Documentation
+## Installation
 
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Setup development environment
-- **[GUIDE.md](GUIDE.md)** - Complete user guide and troubleshooting
-- **[SELLING_STRATEGY.md](SELLING_STRATEGY.md)** - Product description and features
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and updates
+### Releases
 
----
+Windows `.exe` installer and Android `.apk` are available on the [Releases page](https://github.com/SachinRay-09/Local-Vault/releases).
 
-## ⏱️ Performance Note
+### Build from Source
 
-**About Processing Time:**  
-Encryption is CPU-intensive. Large files (1GB+) may take 5-10 minutes to import depending on your device's CPU. This isn't a bug - it's your content being secured with AES-256 encryption. Once encrypted, access is instant. The wait is only during initial import.
+See [DEV_SETUP.md](DEV_SETUP.md) for full build instructions.
 
 ---
 
-## 🔒 Security & Privacy
+## Build from Source
 
-### What We Do
-✅ AES-256-GCM encryption for all files  
-✅ Secure key storage in OS keychain  
-✅ 100% local storage, no cloud  
-✅ No data collection or tracking  
-✅ Works completely offline  
-
-### Password Recovery
-
-**Password Recovery:** If you forget your password, your vault data CANNOT be recovered. There is no backdoor. Security questions reset the app lock only — they do not recover encrypted files. Back up your password.
-
-### What We DON'T Do
-❌ No cloud backup (by design)  
-❌ No account creation  
-❌ No analytics or tracking  
-❌ No vault key recovery — security questions reset only the app unlock password, not the vault encryption key; if the key is lost, data is permanently inaccessible
-❌ No internet connection required  
+See [DEV_SETUP.md](DEV_SETUP.md) for prerequisites, platform setup, and build commands.
 
 ---
 
-## 🛠️ Development
+## Security Model
 
-Want to contribute or build from source? See [DEVELOPMENT.md](DEVELOPMENT.md) for:
-- Prerequisites and setup
-- Building for Windows and Android
-- Project structure
-- Contributing guidelines
-
----
-
-## 📊 Version History
-
-**v2.5.2** (Current)
-- ✅ Natural sort for folders
-- ✅ Multi-folder selection and batch move
-- ✅ App name changed to "Local Vault"
-- ✅ Performance optimizations
-
-See [CHANGELOG.md](CHANGELOG.md) for complete history.
+- Your password is required at every unlock. It is used to derive a Key Encryption Key (KEK) via PBKDF2, which wraps the vault's Data Encryption Key (DEK). The DEK is never stored in plaintext.
+- If you forget your password, your data is permanently inaccessible — there is no backdoor by design.
+- Export a recovery key before you forget your password: Settings → Security → Export Recovery Key.
+- No cloud, no account, no telemetry.
 
 ---
 
-## 🐛 Known Issues & Limitations
+## AI Development Disclosure
 
-- **FVP Video**: Windows-only hardware acceleration (Android uses native player)
-- **ZIP Compatibility**: Streaming extraction may fail with manually modified ZIPs
-  - Solution: Extract ZIP in File Explorer first, then use "Import Folder"
-- **Memory Usage**: Password-protected ZIP imports use 1.2GB+ RAM temporarily
-  - Solution: Use no-password ZIP (200MB RAM) or Import Folder on Windows
-- **Temp Folder Cleanup**: Manual cleanup required after manga reading (by design to prevent data loss)
-- **Android 15+**: Requires Storage Access Framework permissions
+> This app was developed with the assistance of [Kiro](https://kiro.dev), an agentic AI development environment. All architecture decisions, security design, and code were reviewed and verified by the author.
 
 ---
 
-## 📄 License
+## Documentation
 
-Copyright © 2024 Local Vault. All rights reserved.
-
-This software is proprietary. Unauthorized copying, distribution, or modification is prohibited.
-
----
-
-## 🤝 Support
-
-- **Email**: shadow99810@gmail.com
-- **Issues**: [GitHub Issues](https://github.com/yourusername/local_vault/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/local_vault/discussions)
+- [GUIDE.md](GUIDE.md) — User guide and troubleshooting
+- [DEV_SETUP.md](DEV_SETUP.md) — Quick setup checklist for new developers
+- [DEVELOPMENT.md](DEVELOPMENT.md) — Full development guide, architecture, and project structure
+- [CHANGELOG.md](CHANGELOG.md) — Version history
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — Real-world benchmark data with device specs
 
 ---
 
-## 🙏 Acknowledgments
+## Known Limitations
 
-Built with:
-- [Flutter](https://flutter.dev) - Cross-platform framework
-- [Isar](https://isar.dev) - High-performance database
-- [Yomikiru](https://github.com/mienaiyami/yomikiru) - Windows manga reader
-- [Mihon](https://mihon.app) - Android manga reader
+- Image viewing may show a 1-frame black flash on very large images (>4000×6000 px) on mobile, caused by GPU texture upload latency. This is accepted behaviour and does not affect lower-resolution images.
+- Temp files from manga reader sessions are unencrypted and must be cleaned up manually after each reading session (use the in-app cleanup dialog).
 
 ---
 
-**Built with ❤️ for privacy-conscious users**
+## License
+
+Copyright © 2024–2025 Local Vault. All rights reserved. Proprietary.
+
+---
+
+## Support
+
+- **GitHub Issues**: [github.com/SachinRay-09/Local-Vault/issues](https://github.com/SachinRay-09/Local-Vault/issues)
