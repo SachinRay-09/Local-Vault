@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/SachinRay-09/Local-Vault.git)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Android-lightgrey.svg)](https://github.com/SachinRay-09/Local-Vault.git)
-[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 AES-256-GCM encrypted local media vault for Windows and Android. No cloud, no tracking.
 
@@ -47,21 +47,15 @@ Windows `.exe` installer and Android `.apk` are available on the [Releases page]
 
 ### Build from Source
 
-See [DEV_SETUP.md](DEV_SETUP.md) for full build instructions.
-
----
-
-## Build from Source
-
 See [DEV_SETUP.md](DEV_SETUP.md) for prerequisites, platform setup, and build commands.
 
 ---
 
 ## Security Model
 
-- Your password is required at every unlock. It is used to derive a Key Encryption Key (KEK) via PBKDF2, which wraps the vault's Data Encryption Key (DEK). The DEK is never stored in plaintext.
-- If you forget your password, your data is permanently inaccessible — there is no backdoor by design.
-- Export a recovery key before you forget your password: Settings → Security → Export Recovery Key.
+- Your password is required at every unlock. It is used to derive a Key Encryption Key (KEK) via PBKDF2-HMAC-SHA256 (200,000 iterations), which wraps the vault's Data Encryption Key (DEK). The DEK is never stored in plaintext.
+- If you forget your password, your data is permanently inaccessible — there is no backdoor and no recovery mechanism by design. Write your password down and keep it somewhere safe.
+- Security questions (if set during vault setup) only act as a second unlock gate for the app UI. They do **not** recover encryption — they cannot decrypt your vault if you forget the password.
 - No cloud, no account, no telemetry.
 
 ---
@@ -91,7 +85,7 @@ See [DEV_SETUP.md](DEV_SETUP.md) for prerequisites, platform setup, and build co
 
 ## License
 
-Copyright © 2024–2025 Local Vault. All rights reserved. Proprietary.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
 
